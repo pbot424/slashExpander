@@ -1,0 +1,81 @@
+html,
+body {
+  width: 384px;
+}
+
+body {
+  min-height: 0;
+}
+
+.popup-shell {
+  display: flex;
+  flex-direction: column;
+  width: 384px;
+  background: var(--canvas);
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 14px;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-lockup h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.test-area {
+  margin: 0 24px 20px;
+  padding: 17px 18px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.test-area:focus-within {
+  border-color: var(--coral);
+  box-shadow: var(--shadow-focus);
+}
+
+.test-area textarea {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  padding: 0;
+  resize: none;
+  border: 0;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.test-area textarea:focus-visible {
+  box-shadow: none;
+}
+
+.test-area textarea::placeholder {
+  color: var(--faint);
+}
+
+.test-area p {
+  margin: 3px 0 0;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.popup-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 10px;
+  padding: 14px 24px;
+}

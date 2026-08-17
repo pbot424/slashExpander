@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>/Expander</title>
+    <link rel="stylesheet" href="shared/ui.css">
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <div class="brand-lockup">
+          <img class="brand-mark" src="assets/icon.svg" width="36" height="36" alt="">
+          <h1>Expander</h1>
+        </div>
+      </header>
+
+      <section class="test-area">
+        <textarea id="quick-test" rows="2" spellcheck="false" aria-label="Try your command here" aria-describedby="test-hint" placeholder="Try your command here"></textarea>
+        <p id="test-hint"></p>
+      </section>
+
+      <div class="popup-actions">
+        <button id="new-command" class="primary-button" type="button">New command</button>
+        <button id="manage-commands" class="secondary-button" type="button">Manage</button>
+      </div>
+
+    </main>
+
+    <script src="shared/defaults.js"></script>
+    <script src="shared/template-engine.js"></script>
+    <script src="shared/expansion-core.js"></script>
+    <script src="shared/storage.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

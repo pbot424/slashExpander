@@ -1,0 +1,14 @@
+{
+  "name": "expander-chrome-extension",
+  "version": "0.3.0",
+  "private": true,
+  "description": "A Manifest V3 text-expander extension with a dependency-free runtime.",
+  "scripts": {
+    "check": "node --test tests/*.test.cjs && node scripts/validate-extension.mjs",
+    "e2e": "node tests/extension.e2e.mjs",
+    "icons": "powershell -ExecutionPolicy Bypass -File scripts/generate-icons.ps1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

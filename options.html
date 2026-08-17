@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Commands — /Expander</title>
+    <link rel="stylesheet" href="shared/ui.css">
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <div class="options-shell">
+      <header class="options-header">
+        <div class="options-brand">
+          <img class="brand-mark" src="assets/icon.svg" width="36" height="36" alt="">
+          <strong>Expander</strong>
+          <span class="header-rule" aria-hidden="true"></span>
+          <h1>Commands</h1>
+        </div>
+        <button id="open-settings" class="header-settings" type="button" aria-haspopup="dialog" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z" fill="none" stroke="currentColor" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.55"/>
+          </svg>
+        </button>
+      </header>
+
+      <main class="workspace">
+        <aside class="library-pane" aria-label="Command library">
+          <div class="library-content">
+            <label class="search-field">
+              <span class="visually-hidden">Search commands</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
+                <path d="m16 16 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+              <input id="search" type="search" placeholder="Search commands" autocomplete="off">
+            </label>
+
+            <div class="library-heading">
+              <h2>Your commands</h2>
+              <span id="library-count">0</span>
+              <div class="library-heading-actions">
+                <button id="create-command" class="library-create-icon" type="button" aria-label="New command" title="New command">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                  </svg>
+                </button>
+                <button id="create-section" class="library-create-icon" type="button" aria-label="New section" title="New section">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3.5 6.5h6l2 2h9v11h-17v-13ZM12 11.5v5m-2.5-2.5h5" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <form id="section-form" class="section-form" hidden>
+              <label class="visually-hidden" for="section-name">Section name</label>
+              <input id="section-name" type="text" maxlength="50" placeholder="Section name" autocomplete="off">
+              <button class="section-save" type="submit">Save</button>
+              <button id="cancel-section" class="section-cancel" type="button" aria-label="Cancel new section">Cancel</button>
+              <p id="section-message" class="section-message" role="status" aria-live="polite"></p>
+            </form>
+            <div id="options-command-list" class="options-command-list"></div>
+          </div>
+
+        </aside>
+
+        <section class="editor-pane" aria-label="Command workspace">
+          <section id="manager-dashboard" class="manager-dashboard" aria-label="Dashboard">
+            <div class="dashboard-callout">
+              <div>
+                <h3>Build your shortcut library</h3>
+                <p>Create a command, then use it anywhere you type in the browser.</p>
+              </div>
+              <button id="dashboard-create-command" class="primary-button" type="button">New command</button>
+            </div>
+
+            <div class="dashboard-insights">
+              <section id="dashboard-most-used-section" aria-labelledby="most-used-title" hidden>
+                <div class="dashboard-insight-heading">
+                  <h3 id="most-used-title">Most used commands</h3>
+                </div>
+                <div id="dashboard-most-used" class="dashboard-command-ranking"></div>
+              </section>
+              <section id="dashboard-unused-section" aria-labelledby="unused-title" hidden>
+                <div class="dashboard-insight-heading">
+                  <h3 id="unused-title">Still use these?</h3>
+                  <span id="dashboard-unused-count">0</span>
+                </div>
+                <p class="dashboard-insight-help">Unused for 30 days</p>
+                <div id="dashboard-unused" class="dashboard-command-ranking"></div>
+              </section>
+            </div>
+          </section>
+
+          <form id="command-form" novalidate hidden>
+            <div class="editor-heading">
+              <h2 id="editor-title">Edit command</h2>
+              <button id="close-editor" type="button" aria-label="Close command editor" title="Discard changes and return to dashboard">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            <div class="field-group">
+              <label for="shortcut-name">Shortcut</label>
+              <div class="shortcut-control">
+                <select id="shortcut-prefix" aria-label="Shortcut prefix">
+                  <option value="/">/</option>
+                  <option value=";">;</option>
+                  <option value=":">:</option>
+                  <option value="!">!</option>
+                  <option value="#">#</option>
+                  <option value="@">@</option>
+                  <option value="-">-</option>
+                  <option value=".">.</option>
+                  <option value=",">,</option>
+                  <option value="?">?</option>
+                </select>
+                <input id="shortcut-name" type="text" maxlength="36" aria-label="Shortcut name" autocomplete="off" spellcheck="false">
+              </div>
+              <p class="field-help">Choose a prefix and a command without spaces.</p>
+            </div>
+
+            <div class="field-group">
+              <div class="field-label-row">
+                <label for="expansion">Expansion</label>
+                <button id="open-formula" class="formula-trigger" type="button">
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M5 3.5v3M15 3.5v3M3.5 8h13M5 5h10a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 15 17H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  Insert formula
+                </button>
+              </div>
+              <textarea id="expansion" rows="8" maxlength="8000" spellcheck="true"></textarea>
+              <p id="formula-status" class="formula-status" role="status" aria-live="polite"></p>
+            </div>
+
+            <div class="live-preview" aria-label="Expansion preview">
+              <code id="shortcut-preview">/aurora</code>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M5 12h14m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span id="expansion-preview">Hi Aurora team — here’s the update for today.</span>
+            </div>
+
+            <div class="organization-section">
+              <div class="category-setting-row">
+                <label for="command-section">Category</label>
+                <select id="command-section"></select>
+              </div>
+              <label class="command-case-setting" for="case-sensitive">
+                <input id="case-sensitive" type="checkbox" checked>
+                <span>Case-sensitive</span>
+              </label>
+            </div>
+
+            <div class="editor-actions">
+              <button id="save-command" class="primary-button save-button" type="submit">Save changes</button>
+              <button id="duplicate-command" class="editor-icon-button duplicate-button" type="button" aria-label="Duplicate command" title="Duplicate command">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="8" y="8" width="11" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+                  <path d="M16 8V6.5A1.5 1.5 0 0 0 14.5 5h-9A1.5 1.5 0 0 0 4 6.5v9A1.5 1.5 0 0 0 5.5 17H8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button id="delete-command" class="delete-button" type="button" aria-label="Delete command" title="Delete command">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <p id="form-message" class="form-message" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+
+        <aside class="test-pane" aria-label="Command tester">
+          <div class="manager-test-box">
+            <textarea id="manager-test" rows="6" spellcheck="false" aria-label="Try your command here" aria-describedby="manager-test-hint" placeholder="Try your command here"></textarea>
+            <p id="manager-test-hint" class="manager-test-hint"></p>
+          </div>
+          <footer class="creator-footer">
+            <p>Created by <a href="https://presbot.dev" target="_blank" rel="noopener noreferrer">presbot</a></p>
+          </footer>
+        </aside>
+      </main>
+    </div>
+
+    <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+      <div class="settings-dialog-header">
+        <h2 id="settings-title">Settings</h2>
+        <button id="close-settings" class="dialog-close" type="button" aria-label="Close settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="settings-dialog-body">
+        <section class="expansion-settings" aria-labelledby="expansion-settings-title">
+          <div class="settings-section-heading">
+            <h3 id="expansion-settings-title">Expand when</h3>
+            <p>Choose one or more keys, or use Auto-Expand.</p>
+          </div>
+          <fieldset class="trigger-settings">
+            <legend class="visually-hidden">Expansion methods</legend>
+            <div class="trigger-options">
+              <label class="auto-expand-option">
+                <span><strong>Auto-Expand</strong><small>Expand as soon as a shortcut is fully typed</small></span>
+                <input id="expand-auto" type="checkbox">
+              </label>
+              <div class="trigger-key-options">
+                <label>
+                  <span><strong>Space</strong><small>Expand after pressing Space</small></span>
+                  <input id="expand-space" type="checkbox" checked>
+                </label>
+                <label>
+                  <span><strong>Tab</strong><small>Expand after pressing Tab</small></span>
+                  <input id="expand-tab" type="checkbox" checked>
+                </label>
+                <label>
+                  <span><strong>Enter</strong><small>Expand after pressing Enter</small></span>
+                  <input id="expand-enter" type="checkbox" checked>
+                </label>
+              </div>
+            </div>
+          </fieldset>
+        </section>
+        <section class="settings-data" aria-labelledby="settings-data-title">
+          <div>
+            <h3 id="settings-data-title">Data</h3>
+            <p>Move your commands and categories between browsers.</p>
+          </div>
+          <div class="settings-data-actions">
+            <button id="import-commands" class="secondary-button" type="button">Import</button>
+            <button id="export-commands" class="secondary-button" type="button">Export</button>
+            <input id="import-file" type="file" accept="application/json,.json" hidden>
+          </div>
+        </section>
+        <p id="settings-message" class="settings-message" role="status" aria-live="polite"></p>
+      </div>
+    </dialog>
+
+    <dialog id="formula-dialog" class="settings-dialog formula-dialog" aria-labelledby="formula-title">
+      <div class="settings-dialog-header">
+        <div>
+          <h2 id="formula-title">Insert date formula</h2>
+        </div>
+        <button id="close-formula" class="dialog-close" type="button" aria-label="Close formula builder">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <form id="formula-form" class="formula-form">
+        <label class="formula-field">
+          <span>Preset</span>
+          <select id="formula-preset">
+            <option value="po-range">PO Date Range</option>
+          </select>
+        </label>
+
+        <div class="formula-preset-note">
+          <strong>Tomorrow through Friday of next week</strong>
+        </div>
+
+        <div class="formula-preview" aria-live="polite">
+          <span>Preview</span>
+          <strong id="formula-preview"></strong>
+        </div>
+
+        <div class="formula-actions">
+          <button class="primary-button" type="submit">Insert formula</button>
+          <button id="cancel-formula" class="secondary-button" type="button">Cancel</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="shared/defaults.js"></script>
+    <script src="shared/template-engine.js"></script>
+    <script src="shared/expansion-core.js"></script>
+    <script src="shared/storage.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>
