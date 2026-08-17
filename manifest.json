@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "/Expander",
   "short_name": "/Expander",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Expand custom shortcuts into saved text anywhere you type.",
   "permissions": [
     "storage",

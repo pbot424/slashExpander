@@ -960,7 +960,7 @@
     event.preventDefault();
     const site = SlashDefaults.normalizeSite(elements.siteExclusion.value);
     if (!site) {
-      elements.siteExclusionMessage.textContent = "Enter a valid website domain.";
+      elements.siteExclusionMessage.textContent = "Enter a valid website URL, such as example.com.";
       return;
     }
     const excludedSites = SlashDefaults.sanitizeExcludedSites(state.settings.excludedSites);

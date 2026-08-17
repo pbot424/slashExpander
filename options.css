@@ -1231,22 +1231,43 @@ body {
 }
 
 .storage-mode-control {
+  position: relative;
   margin-left: auto;
 }
 
+.storage-mode-control::after {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  pointer-events: none;
+  transform: translateY(-70%) rotate(45deg);
+}
+
 .storage-mode-control select {
-  min-width: 156px;
+  width: 132px;
   height: 38px;
-  padding: 0 10px;
+  padding: 0 20px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
+  appearance: none;
   background: #fff;
   color: var(--ink);
+  text-align: center;
+  text-align-last: center;
+}
+
+.storage-mode-control option {
+  text-align: center;
 }
 
 .storage-heading {
   display: grid;
-  grid-template-columns: auto minmax(156px, auto);
+  grid-template-columns: auto 132px;
   align-items: center;
   gap: 4px 18px;
 }
@@ -1595,10 +1616,6 @@ body {
     align-items: flex-start;
     flex-direction: column;
     gap: 12px;
-  }
-
-  .storage-mode-control select {
-    min-width: 144px;
   }
 
   .import-summary {
