@@ -41,7 +41,32 @@ test("version 3 migration preserves an explicit section assignment", () => {
 
 test("normalizes and deduplicates excluded sites", () => {
   assert.deepEqual(
-    defaults.sanitizeExcludedSites(["Example.com", "https://example.com/path", "mail.example.com", "not a host"]),
-    ["example.com", "mail.example.com"]
+    defaults.sanitizeExcludedSites([
+      "Example.com",
+      "https://example.com/path",
+      "mail.example.org",
+      "https://store.example.co.uk/orders",
+      "https://münich.de"
+    ]),
+    ["example.com", "mail.example.org", "store.example.co.uk", "xn--mnich-kva.de"]
   );
+});
+
+test("rejects paused sites without a valid public-style domain", () => {
+  [
+    "anything",
+    "not a host",
+    "localhost",
+    "http://localhost:3000",
+    "127.0.0.1",
+    "https://127.0.0.1/path",
+    "example.c",
+    "example.123",
+    "-invalid.com",
+    "invalid-.com",
+    "https://example.com.",
+    "https://user:password@example.com",
+    "mailto:user@example.com",
+    "ftp://example.com"
+  ].forEach((value) => assert.equal(defaults.normalizeSite(value), "", value));
 });

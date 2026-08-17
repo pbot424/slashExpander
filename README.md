@@ -106,14 +106,14 @@ The release is written to `dist/slash-expander-v<version>.zip`, using the versio
 Update all project version files together with:
 
 ```powershell
-npm.cmd run version:set -- 0.4.1
+npm.cmd run version:set -- 0.4.2
 ```
 
 To publish that ZIP as a GitHub Release, push a version tag that matches `manifest.json`:
 
 ```powershell
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 The GitHub Actions release workflow runs the project checks, builds the validated ZIP, generates release notes, and attaches the ZIP to a release named `/Expander v<version>`.

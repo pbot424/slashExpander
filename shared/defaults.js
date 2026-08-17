@@ -19,7 +19,18 @@
     if (!input) return "";
     try {
       const url = new URL(input.includes("://") ? input : `https://${input}`);
-      return url.hostname.replace(/^\.+/u, "").slice(0, 253);
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return "";
+      const hostname = url.hostname.toLowerCase();
+      if (!hostname || hostname.length > 253 || hostname.endsWith(".")) return "";
+
+      const labels = hostname.split(".");
+      const validLabel = (label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(label);
+      if (labels.length < 2 || labels.some((label) => !validLabel(label))) return "";
+
+      const topLevelDomain = labels.at(-1);
+      const validTopLevelDomain = /^[a-z]{2,63}$/u.test(topLevelDomain)
+        || /^xn--[a-z0-9](?:[a-z0-9-]{0,57}[a-z0-9])?$/u.test(topLevelDomain);
+      return validTopLevelDomain ? hostname : "";
     } catch {
       return "";
     }

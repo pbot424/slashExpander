@@ -58,7 +58,8 @@ const server = http.createServer((_request, response) => {
 
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();
-const testUrl = `http://127.0.0.1:${address.port}/`;
+const testHostname = "expander.example.com";
+const testUrl = `http://${testHostname}:${address.port}/`;
 
 async function waitForValue(read, expected, timeout = 5000) {
   const deadline = Date.now() + timeout;
@@ -93,7 +94,8 @@ try {
     viewport: { width: 1280, height: 800 },
     args: [
       `--disable-extensions-except=${root}`,
-      `--load-extension=${root}`
+      `--load-extension=${root}`,
+      `--host-resolver-rules=MAP ${testHostname} 127.0.0.1`
     ]
   });
 
@@ -312,6 +314,12 @@ try {
     const selector = document.querySelector("#storage-mode").getBoundingClientRect();
     return Math.abs((heading.top + heading.height / 2) - (selector.top + selector.height / 2)) <= 2;
   }));
+  assert.deepEqual(await options.locator("#storage-mode").evaluate((element) => ({
+    appearance: getComputedStyle(element).appearance,
+    width: getComputedStyle(element).width,
+    textAlign: getComputedStyle(element).textAlign,
+    textAlignLast: getComputedStyle(element).textAlignLast
+  })), { appearance: "none", width: "132px", textAlign: "center", textAlignLast: "center" });
   assert.ok(await options.evaluate(() => {
     const paused = document.querySelector(".paused-sites");
     const storage = document.querySelector(".settings-storage");
@@ -718,19 +726,23 @@ try {
   assert.equal(await options.locator("#expand-enter").isChecked(), true);
   assert.equal(await options.locator("#expand-auto").isChecked(), false);
   assert.equal(await options.getByRole("heading", { name: "Paused sites", exact: true }).count(), 1);
-  await options.locator("#site-exclusion").fill("127.0.0.1");
+  await options.locator("#site-exclusion").fill("anything");
+  await options.locator("#site-exclusion-form").getByRole("button", { name: "Add" }).click();
+  assert.equal(await options.locator("#site-exclusion-message").textContent(), "Enter a valid website URL, such as example.com.");
+  assert.equal(await options.locator("#site-exclusion-list").textContent(), "");
+  await options.locator("#site-exclusion").fill(testHostname);
   await options.locator("#site-exclusion-form").getByRole("button", { name: "Add" }).click();
   await waitForValue(
     () => options.evaluate(() => chrome.storage.sync.get(["settings"]).then((stored) => stored.settings.excludedSites.join(","))),
-    "127.0.0.1"
+    testHostname
   );
-  assert.equal(await options.getByRole("button", { name: "Resume /Expander on 127.0.0.1" }).count(), 1);
+  assert.equal(await options.getByRole("button", { name: `Resume /Expander on ${testHostname}` }).count(), 1);
   await options.getByRole("button", { name: "Close settings" }).click();
   await page.locator("#plain").fill("/aurora");
   await page.locator("#plain").press("Space");
   assert.equal(await page.locator("#plain").inputValue(), "/aurora ");
   await options.getByRole("button", { name: "Settings" }).click();
-  await options.getByRole("button", { name: "Resume /Expander on 127.0.0.1" }).click();
+  await options.getByRole("button", { name: `Resume /Expander on ${testHostname}` }).click();
   await waitForValue(
     () => options.evaluate(() => chrome.storage.sync.get(["settings"]).then((stored) => stored.settings.excludedSites.length)),
     0
@@ -924,6 +936,8 @@ try {
       "total Chrome Sync quota preflight",
       "device-only library storage",
       "storage usage feedback",
+      "paused-site URL validation",
+      "compact centered storage selector",
       "input",
       "textarea",
       "contenteditable",
