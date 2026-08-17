@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install extension-capable Chromium
+        run: npx playwright-core install chromium
+
       - name: Verify release tag
         env:
           RELEASE_TAG: ${{ github.ref_name }}
