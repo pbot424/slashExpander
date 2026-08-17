@@ -1,13 +1,17 @@
 {
   "name": "expander-chrome-extension",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "A Manifest V3 text-expander extension with a dependency-free runtime.",
   "scripts": {
-    "check": "node --test tests/*.test.cjs && node scripts/validate-extension.mjs",
+    "check": "node --test tests/*.test.cjs && node scripts/check-version.mjs && node scripts/validate-extension.mjs",
     "e2e": "node tests/extension.e2e.mjs",
     "icons": "powershell -ExecutionPolicy Bypass -File scripts/generate-icons.ps1",
-    "release": "npm run check && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1",
+    "verify": "npm run check && npm run e2e",
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1",
+    "release": "npm run verify && npm run package",
+    "version:check": "node scripts/check-version.mjs",
+    "version:set": "node scripts/set-version.mjs",
     "store-assets": "npm run icons && node scripts/capture-store-listing.mjs"
   },
   "devDependencies": {

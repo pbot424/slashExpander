@@ -7,7 +7,9 @@
   const COMMANDS_FORMAT_VERSION = 1;
   const COMMANDS_CHUNK_SIZE = 7000;
   const MAX_COMMAND_CHUNKS = 64;
-  const KEYS = [LEGACY_COMMANDS_KEY, COMMANDS_META_KEY, "sections", "settings", "stateVersion"];
+  const STORAGE_MODE_KEY = "storageMode";
+  const LOCAL_STATE_KEY = "localState";
+  const SYNC_KEYS = [LEGACY_COMMANDS_KEY, COMMANDS_META_KEY, "sections", "settings", "stateVersion"];
   const textEncoder = new TextEncoder();
   const textDecoder = new TextDecoder();
 
@@ -51,12 +53,18 @@
       expandOnSpace: autoExpand ? false : settings.expandOnSpace !== false,
       expandOnTab: autoExpand ? false : settings.expandOnTab !== false,
       expandOnEnter: autoExpand ? false : settings.expandOnEnter !== false,
-      autoExpand
+      autoExpand,
+      excludedSites: SlashDefaults.sanitizeExcludedSites(settings.excludedSites)
     };
   }
 
   function commandChunkKey(index) {
     return `${COMMANDS_CHUNK_PREFIX}${index}`;
+  }
+
+  async function getStorageMode() {
+    const stored = await chrome.storage.local.get([STORAGE_MODE_KEY]);
+    return stored[STORAGE_MODE_KEY] === "local" ? "local" : "sync";
   }
 
   function bytesToBase64(bytes) {
@@ -85,6 +93,9 @@
       chunks.push(encoded.slice(index, index + COMMANDS_CHUNK_SIZE));
     }
     if (!chunks.length) chunks.push(bytesToBase64(textEncoder.encode("[]")));
+    if (chunks.length > MAX_COMMAND_CHUNKS) {
+      throw new Error("Your command library is too large to store.");
+    }
 
     const items = {};
     chunks.forEach((chunk, index) => {
@@ -126,19 +137,20 @@
   }
 
   function isStateChange(changes, areaName) {
-    if (areaName !== "sync" || !changes || typeof changes !== "object") return false;
-    return Object.keys(changes).some((key) => KEYS.includes(key) || key.startsWith(COMMANDS_CHUNK_PREFIX));
+    if (!changes || typeof changes !== "object") return false;
+    if (areaName === "local") {
+      return Object.keys(changes).some((key) => key === STORAGE_MODE_KEY || key === LOCAL_STATE_KEY);
+    }
+    if (areaName !== "sync") return false;
+    return Object.keys(changes).some((key) => SYNC_KEYS.includes(key) || key.startsWith(COMMANDS_CHUNK_PREFIX));
   }
 
-  async function getState() {
-    const stored = await chrome.storage.sync.get(null);
+  function stateFromRecord(stored, rawCommands) {
     const defaults = SlashDefaults.cloneDefaults();
     const sections = Array.isArray(stored.sections)
       ? stored.sections.map(sanitizeSection).filter(Boolean)
       : defaults.sections;
     const sectionIds = new Set(sections.map((section) => section.id));
-    const chunkedCommands = decodeCommandChunks(stored);
-    const rawCommands = chunkedCommands === null ? stored[LEGACY_COMMANDS_KEY] : chunkedCommands;
     const commands = Array.isArray(rawCommands)
       ? rawCommands.map(sanitizeCommand).filter(Boolean)
       : defaults.commands;
@@ -154,7 +166,24 @@
     };
   }
 
-  async function saveState(state) {
+  async function getState() {
+    const mode = await getStorageMode();
+    if (mode === "local") {
+      const stored = await chrome.storage.local.get([LOCAL_STATE_KEY]);
+      const localState = stored[LOCAL_STATE_KEY];
+      if (localState && typeof localState === "object") {
+        return stateFromRecord(localState, localState.commands);
+      }
+      return SlashDefaults.cloneDefaults();
+    }
+
+    const stored = await chrome.storage.sync.get(null);
+    const chunkedCommands = decodeCommandChunks(stored);
+    const rawCommands = chunkedCommands === null ? stored[LEGACY_COMMANDS_KEY] : chunkedCommands;
+    return stateFromRecord(stored, rawCommands);
+  }
+
+  function cleanStateForSave(state) {
     const cleanSections = Array.isArray(state.sections)
       ? state.sections.map(sanitizeSection).filter(Boolean)
       : [];
@@ -165,21 +194,45 @@
     cleanCommands.forEach((command) => {
       if (!sectionIds.has(command.sectionId)) command.sectionId = null;
     });
-    const cleanState = {
+    return {
       commands: cleanCommands,
       sections: cleanSections,
       settings: sanitizeSettings(state.settings),
       stateVersion: SlashDefaults.STATE_VERSION
     };
-    const encodedCommands = encodeCommandChunks(cleanCommands);
+  }
+
+  async function saveSyncState(cleanState) {
+    const encodedCommands = encodeCommandChunks(cleanState.commands);
     Object.entries(encodedCommands.items).forEach(([key, value]) => {
       if (syncItemBytes(key, value) >= chrome.storage.sync.QUOTA_BYTES_PER_ITEM) {
         throw new Error("A command storage chunk is too large to sync.");
       }
     });
 
-    const previous = await chrome.storage.sync.get([LEGACY_COMMANDS_KEY, COMMANDS_META_KEY]);
+    const previous = await chrome.storage.sync.get(null);
     const previousChunkCount = commandChunkCount(previous[COMMANDS_META_KEY]);
+    const staleKeys = [];
+    if (Object.prototype.hasOwnProperty.call(previous, LEGACY_COMMANDS_KEY)) staleKeys.push(LEGACY_COMMANDS_KEY);
+    for (let index = encodedCommands.meta.chunkCount; index < previousChunkCount; index += 1) {
+      staleKeys.push(commandChunkKey(index));
+    }
+
+    const candidate = {
+      ...previous,
+      ...encodedCommands.items,
+      [COMMANDS_META_KEY]: encodedCommands.meta,
+      sections: cleanState.sections,
+      settings: cleanState.settings,
+      stateVersion: cleanState.stateVersion
+    };
+    staleKeys.forEach((key) => delete candidate[key]);
+    const totalBytes = Object.entries(candidate).reduce((total, [key, value]) => total + syncItemBytes(key, value), 0);
+    const quotaBytes = Number.isFinite(chrome.storage.sync.QUOTA_BYTES) ? chrome.storage.sync.QUOTA_BYTES : 102400;
+    if (totalBytes > quotaBytes) {
+      throw new Error("Your command library is too large for Chrome Sync. Switch to This device only, export a backup, or shorten unused commands.");
+    }
+
     try {
       await chrome.storage.sync.set({
         ...encodedCommands.items,
@@ -190,18 +243,65 @@
       });
     } catch (error) {
       if (/quota|MAX_WRITE_OPERATIONS/iu.test(error?.message || "")) {
-        throw new Error("Your command library is too large for Chrome Sync. Export a backup, then shorten or remove unused commands.");
+        throw new Error("Your command library is too large for Chrome Sync. Switch to This device only, export a backup, or shorten unused commands.");
       }
       throw error;
     }
 
-    const staleKeys = [];
-    if (Object.prototype.hasOwnProperty.call(previous, LEGACY_COMMANDS_KEY)) staleKeys.push(LEGACY_COMMANDS_KEY);
-    for (let index = encodedCommands.meta.chunkCount; index < previousChunkCount; index += 1) {
-      staleKeys.push(commandChunkKey(index));
-    }
     if (staleKeys.length) await chrome.storage.sync.remove(staleKeys);
     return cleanState;
+  }
+
+  async function saveLocalState(cleanState) {
+    const quotaBytes = Number.isFinite(chrome.storage.local.QUOTA_BYTES) ? chrome.storage.local.QUOTA_BYTES : 10485760;
+    if (syncItemBytes(LOCAL_STATE_KEY, cleanState) > quotaBytes) {
+      throw new Error("Your command library is too large for device storage. Export a backup, then shorten unused commands.");
+    }
+    try {
+      await chrome.storage.local.set({ [LOCAL_STATE_KEY]: cleanState });
+    } catch (error) {
+      if (/quota/iu.test(error?.message || "")) {
+        throw new Error("Your command library is too large for device storage. Export a backup, then shorten unused commands.");
+      }
+      throw error;
+    }
+    return cleanState;
+  }
+
+  async function saveState(state) {
+    const cleanState = cleanStateForSave(state);
+    return (await getStorageMode()) === "local"
+      ? saveLocalState(cleanState)
+      : saveSyncState(cleanState);
+  }
+
+  async function setStorageMode(requestedMode) {
+    const nextMode = requestedMode === "local" ? "local" : "sync";
+    const currentMode = await getStorageMode();
+    if (currentMode === nextMode) return getState();
+    const cleanState = cleanStateForSave(await getState());
+
+    if (nextMode === "local") {
+      await chrome.storage.local.set({
+        [LOCAL_STATE_KEY]: cleanState,
+        [STORAGE_MODE_KEY]: "local"
+      });
+    } else {
+      await saveSyncState(cleanState);
+      await chrome.storage.local.set({ [STORAGE_MODE_KEY]: "sync" });
+    }
+    return cleanState;
+  }
+
+  async function getStorageInfo() {
+    const mode = await getStorageMode();
+    const area = mode === "local" ? chrome.storage.local : chrome.storage.sync;
+    const keys = mode === "local" ? [LOCAL_STATE_KEY] : null;
+    const bytesInUse = typeof area.getBytesInUse === "function" ? await area.getBytesInUse(keys) : 0;
+    const quotaBytes = Number.isFinite(area.QUOTA_BYTES)
+      ? area.QUOTA_BYTES
+      : mode === "local" ? 10485760 : 102400;
+    return { mode, bytesInUse, quotaBytes };
   }
 
   async function deleteCommand(id) {
@@ -232,11 +332,14 @@
     decodeCommandChunks,
     deleteCommand,
     encodeCommandChunks,
+    getStorageInfo,
+    getStorageMode,
     getState,
     isStateChange,
     sanitizeCommand,
     sanitizeSection,
     saveState,
+    setStorageMode,
     subscribe,
     syncItemBytes
   };

@@ -33,6 +33,19 @@
     expandAuto: document.querySelector("#expand-auto"),
     settingsDialog: document.querySelector("#settings-dialog"),
     settingsMessage: document.querySelector("#settings-message"),
+    storageMode: document.querySelector("#storage-mode"),
+    storageUsage: document.querySelector("#storage-usage"),
+    storageUsageProgress: document.querySelector("#storage-usage-progress"),
+    siteExclusionForm: document.querySelector("#site-exclusion-form"),
+    siteExclusion: document.querySelector("#site-exclusion"),
+    siteExclusionList: document.querySelector("#site-exclusion-list"),
+    siteExclusionMessage: document.querySelector("#site-exclusion-message"),
+    importDialog: document.querySelector("#import-dialog"),
+    importForm: document.querySelector("#import-form"),
+    importSummary: document.querySelector("#import-summary"),
+    importFileName: document.querySelector("#import-file-name"),
+    importSettings: document.querySelector("#import-settings"),
+    importMessage: document.querySelector("#import-message"),
     message: document.querySelector("#form-message"),
     saveButton: document.querySelector("#save-command"),
     duplicateButton: document.querySelector("#duplicate-command"),
@@ -54,6 +67,7 @@
   let formulaSelectionEnd = 0;
   let savedCommandSignature = null;
   let showSavedState = false;
+  let pendingImport = null;
   const collapsedSections = new Set();
   const UNUSED_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -259,7 +273,8 @@
       expandOnSpace: elements.expandSpace.checked,
       expandOnTab: elements.expandTab.checked,
       expandOnEnter: elements.expandEnter.checked,
-      autoExpand: elements.expandAuto.checked
+      autoExpand: elements.expandAuto.checked,
+      excludedSites: SlashDefaults.sanitizeExcludedSites(state.settings.excludedSites)
     };
   }
 
@@ -273,6 +288,55 @@
     elements.expandEnter.checked = state.settings.expandOnEnter;
     elements.expandAuto.checked = state.settings.autoExpand;
     syncTriggerAvailability();
+  }
+
+  function formatStorageSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  async function refreshStorageInfo() {
+    const info = await SlashStore.getStorageInfo();
+    elements.storageMode.value = info.mode;
+    elements.storageUsageProgress.max = info.quotaBytes;
+    elements.storageUsageProgress.value = Math.min(info.bytesInUse, info.quotaBytes);
+    elements.storageUsage.textContent = `${formatStorageSize(info.bytesInUse)} of ${formatStorageSize(info.quotaBytes)}`;
+  }
+
+  function renderSiteExclusions() {
+    const excludedSites = SlashDefaults.sanitizeExcludedSites(state.settings.excludedSites);
+    elements.siteExclusionList.replaceChildren();
+    if (!excludedSites.length) return;
+
+    excludedSites.forEach((site) => {
+      const row = document.createElement("div");
+      row.className = "site-exclusion-row";
+      const hostname = document.createElement("span");
+      hostname.textContent = site;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.setAttribute("aria-label", `Resume /Expander on ${site}`);
+      remove.addEventListener("click", async () => {
+        try {
+          state = await SlashStore.saveState({
+            ...state,
+            settings: {
+              ...state.settings,
+              excludedSites: excludedSites.filter((candidate) => candidate !== site)
+            }
+          });
+          renderSiteExclusions();
+          await refreshStorageInfo();
+          elements.siteExclusionMessage.textContent = `Resumed on ${site}.`;
+        } catch (error) {
+          elements.siteExclusionMessage.textContent = error.message || "Could not update paused sites.";
+        }
+      });
+      row.append(hostname, remove);
+      elements.siteExclusionList.append(row);
+    });
   }
 
   function syncTriggerAvailability({ restoreSpace = false } = {}) {
@@ -649,6 +713,8 @@
     state = await SlashStore.getState();
     updateManagerTestHint();
     syncSettingsControls();
+    renderSiteExclusions();
+    await refreshStorageInfo();
     await loadUsageStats();
     if (!isDashboard && !isNew && !state.commands.some((command) => command.id === selectedId)) {
       selectedId = null;
@@ -834,12 +900,16 @@
   });
   elements.managerTest.addEventListener("input", (event) => {
     if (!event.isTrusted || event.isComposing || !SlashExpansion.isAutoEnabled(state.settings)) return;
+    if (!SlashExpansion.isAutoExpansionInput(event.inputType)) return;
     expandManagerTest("Auto");
   });
 
-  document.querySelector("#open-settings").addEventListener("click", () => {
+  document.querySelector("#open-settings").addEventListener("click", async () => {
     elements.settingsMessage.textContent = "";
+    elements.siteExclusionMessage.textContent = "";
     syncSettingsControls();
+    renderSiteExclusions();
+    await refreshStorageInfo();
     elements.settingsDialog.showModal();
   });
   document.querySelector("#close-settings").addEventListener("click", () => elements.settingsDialog.close());
@@ -854,6 +924,7 @@
         state.settings = settingsFromControls();
         state = await SlashStore.saveState(state);
         updateManagerTestHint();
+        await refreshStorageInfo();
         elements.settingsMessage.textContent = "Settings saved.";
       } catch (error) {
         elements.settingsMessage.textContent = error.message || "Could not save expansion settings.";
@@ -861,8 +932,58 @@
     });
   });
 
-  document.querySelector("#export-commands").addEventListener("click", () => {
-    const data = JSON.stringify({
+  elements.storageMode.addEventListener("change", async () => {
+    const previousMode = await SlashStore.getStorageMode();
+    const nextMode = elements.storageMode.value;
+    if (nextMode === previousMode) return;
+    if (nextMode === "sync" && !confirm("Switch to Chrome Sync? Your device-only library will replace the current synced library.")) {
+      elements.storageMode.value = previousMode;
+      return;
+    }
+
+    elements.storageMode.disabled = true;
+    try {
+      state = await SlashStore.setStorageMode(nextMode);
+      await refresh();
+      elements.settingsMessage.textContent = nextMode === "local"
+        ? "Command library moved to this device. The previous synced copy was kept as a backup."
+        : "Command library moved to Chrome Sync.";
+    } catch (error) {
+      elements.storageMode.value = previousMode;
+      elements.settingsMessage.textContent = error.message || "Could not change storage mode.";
+    } finally {
+      elements.storageMode.disabled = false;
+    }
+  });
+
+  elements.siteExclusionForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const site = SlashDefaults.normalizeSite(elements.siteExclusion.value);
+    if (!site) {
+      elements.siteExclusionMessage.textContent = "Enter a valid website domain.";
+      return;
+    }
+    const excludedSites = SlashDefaults.sanitizeExcludedSites(state.settings.excludedSites);
+    if (excludedSites.includes(site)) {
+      elements.siteExclusionMessage.textContent = `${site} is already paused.`;
+      return;
+    }
+    try {
+      state = await SlashStore.saveState({
+        ...state,
+        settings: { ...state.settings, excludedSites: [...excludedSites, site] }
+      });
+      elements.siteExclusion.value = "";
+      renderSiteExclusions();
+      await refreshStorageInfo();
+      elements.siteExclusionMessage.textContent = `Paused on ${site}.`;
+    } catch (error) {
+      elements.siteExclusionMessage.textContent = error.message || "Could not update paused sites.";
+    }
+  });
+
+  function exportData() {
+    return JSON.stringify({
       format: "expander-commands",
       version: SlashDefaults.STATE_VERSION,
       exportedAt: new Date().toISOString(),
@@ -870,12 +991,149 @@
       sections: state.sections,
       settings: state.settings
     }, null, 2);
-    const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+  }
+
+  function downloadExport(filename) {
+    const url = URL.createObjectURL(new Blob([exportData()], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "expander-commands.json";
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function createImportPlan(imported, fileName) {
+    if (imported?.format && imported.format !== "expander-commands") {
+      throw new Error("This file was not created by /Expander.");
+    }
+    if (imported?.version !== undefined) {
+      if (!Number.isInteger(imported.version) || imported.version < 1) {
+        throw new Error("This backup has an invalid version.");
+      }
+      if (imported.version > SlashDefaults.STATE_VERSION) {
+        throw new Error("This backup was created by a newer version of /Expander.");
+      }
+    }
+    if (!Array.isArray(imported?.commands)) {
+      throw new Error("This file does not contain /Expander commands.");
+    }
+
+    const sectionNameBySourceId = new Map();
+    const sectionsByName = new Map();
+    const rawSections = Array.isArray(imported.sections) ? imported.sections : [];
+    rawSections.forEach((rawSection) => {
+      const clean = SlashStore.sanitizeSection(rawSection);
+      if (!clean) return;
+      const nameKey = clean.name.toLowerCase();
+      if (!sectionsByName.has(nameKey)) sectionsByName.set(nameKey, { name: clean.name });
+      if (rawSection?.id) sectionNameBySourceId.set(String(rawSection.id), clean.name);
+    });
+
+    let invalidCount = 0;
+    const commandsByShortcut = new Map();
+    imported.commands.forEach((rawCommand) => {
+      const clean = SlashStore.sanitizeCommand(rawCommand);
+      if (!clean) {
+        invalidCount += 1;
+        return;
+      }
+      const shortcutKey = clean.shortcut.toLowerCase();
+      if (commandsByShortcut.has(shortcutKey)) {
+        invalidCount += 1;
+        return;
+      }
+      commandsByShortcut.set(shortcutKey, {
+        ...clean,
+        sourceSectionName: sectionNameBySourceId.get(clean.sectionId) || null
+      });
+    });
+
+    const commands = [...commandsByShortcut.values()];
+    if (!commands.length) throw new Error("This file does not contain any valid commands.");
+    const existingShortcuts = new Set(state.commands.map((command) => command.shortcut.toLowerCase()));
+    const conflictCount = commands.filter((command) => existingShortcuts.has(command.shortcut.toLowerCase())).length;
+    return {
+      fileName,
+      commands,
+      sections: [...sectionsByName.values()],
+      settings: imported.settings && typeof imported.settings === "object" ? imported.settings : null,
+      conflictCount,
+      invalidCount,
+      newCount: commands.length - conflictCount
+    };
+  }
+
+  function renderImportPlan(plan) {
+    elements.importFileName.textContent = plan.fileName;
+    elements.importSummary.replaceChildren();
+    [
+      [plan.newCount, "New commands"],
+      [plan.conflictCount, "Shortcut conflicts"],
+      [plan.invalidCount, "Invalid skipped"]
+    ].forEach(([value, label]) => {
+      const item = document.createElement("div");
+      item.className = "import-summary-item";
+      const count = document.createElement("strong");
+      count.textContent = String(value);
+      const description = document.createElement("span");
+      description.textContent = label;
+      item.append(count, description);
+      elements.importSummary.append(item);
+    });
+    elements.importSettings.disabled = !plan.settings;
+    elements.importSettings.checked = Boolean(plan.settings);
+    elements.importMessage.textContent = "";
+  }
+
+  function closeImportReview() {
+    pendingImport = null;
+    elements.importDialog.close();
+    elements.importMessage.textContent = "";
+  }
+
+  async function applyImport(plan, mode, includeSettings) {
+    const sectionIdByName = new Map();
+    const nextSections = mode === "replace" ? [] : [...state.sections];
+    nextSections.forEach((section) => sectionIdByName.set(section.name.toLowerCase(), section.id));
+    plan.sections.forEach((section) => {
+      const key = section.name.toLowerCase();
+      if (sectionIdByName.has(key)) return;
+      const id = SlashStore.createId();
+      sectionIdByName.set(key, id);
+      nextSections.push({ id, name: section.name });
+    });
+
+    const importedCommands = plan.commands.map((command) => ({
+      ...command,
+      id: SlashStore.createId(),
+      sectionId: command.sourceSectionName
+        ? sectionIdByName.get(command.sourceSectionName.toLowerCase()) || null
+        : null
+    }));
+    const nextCommands = mode === "replace" ? importedCommands : [...state.commands];
+    if (mode === "merge") {
+      const existingShortcuts = new Set(nextCommands.map((command) => command.shortcut.toLowerCase()));
+      importedCommands.forEach((command) => {
+        const key = command.shortcut.toLowerCase();
+        if (existingShortcuts.has(key)) return;
+        existingShortcuts.add(key);
+        nextCommands.push(command);
+      });
+    }
+
+    const nextSettings = includeSettings && plan.settings
+      ? { ...state.settings, ...plan.settings }
+      : state.settings;
+    return SlashStore.saveState({
+      ...state,
+      sections: nextSections,
+      commands: nextCommands,
+      settings: nextSettings
+    });
+  }
+
+  document.querySelector("#export-commands").addEventListener("click", () => {
+    downloadExport("expander-commands.json");
     elements.settingsMessage.textContent = "Exported command file.";
   });
 
@@ -884,46 +1142,43 @@
     const file = elements.importFile.files?.[0];
     if (!file) return;
     try {
+      if (file.size > 5 * 1024 * 1024) throw new Error("That backup is too large to import.");
       const imported = JSON.parse(await file.text());
-      if (!Array.isArray(imported.commands)) throw new Error("This file does not contain /Expander commands.");
-
-      const sectionIdMap = new Map();
-      const nextSections = [...state.sections];
-      const importedSections = Array.isArray(imported.sections) ? imported.sections : [];
-      importedSections.forEach((rawSection) => {
-        const cleanSection = SlashStore.sanitizeSection(rawSection);
-        if (!cleanSection) return;
-        const existing = nextSections.find((section) => section.name.toLowerCase() === cleanSection.name.toLowerCase());
-        if (existing) {
-          if (rawSection?.id) sectionIdMap.set(String(rawSection.id), existing.id);
-          return;
-        }
-        const importedId = SlashStore.createId();
-        if (rawSection?.id) sectionIdMap.set(String(rawSection.id), importedId);
-        nextSections.push({ id: importedId, name: cleanSection.name });
-      });
-
-      const additions = imported.commands.map((rawCommand) => {
-        const clean = SlashStore.sanitizeCommand(rawCommand);
-        if (!clean) return null;
-        const mappedSection = sectionIdMap.get(clean.sectionId)
-          || (nextSections.some((section) => section.id === clean.sectionId) ? clean.sectionId : null);
-        return { ...clean, id: SlashStore.createId(), sectionId: mappedSection };
-      }).filter(Boolean);
-      const byShortcut = new Map(state.commands.map((command) => [command.shortcut.toLowerCase(), command]));
-      additions.forEach((command) => byShortcut.set(command.shortcut.toLowerCase(), command));
-      state = await SlashStore.saveState({
-        ...state,
-        sections: nextSections,
-        commands: [...byShortcut.values()]
-      });
-      await refresh();
-      elements.settingsMessage.textContent = `Imported ${additions.length} command${additions.length === 1 ? "" : "s"}.`;
+      pendingImport = createImportPlan(imported, file.name);
+      renderImportPlan(pendingImport);
+      elements.importDialog.showModal();
     } catch (error) {
       elements.settingsMessage.textContent = error.message || "Could not import that file.";
     } finally {
       elements.importFile.value = "";
     }
+  });
+
+  elements.importForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!pendingImport) return;
+    const mode = new FormData(elements.importForm).get("import-mode") === "replace" ? "replace" : "merge";
+    const timestamp = new Date().toISOString().replace(/[:.]/gu, "-");
+    downloadExport(`expander-commands-backup-${timestamp}.json`);
+    try {
+      state = await applyImport(pendingImport, mode, elements.importSettings.checked);
+      const importedCount = mode === "replace" ? pendingImport.commands.length : pendingImport.newCount;
+      closeImportReview();
+      await refresh();
+      elements.settingsMessage.textContent = `Imported ${importedCount} command${importedCount === 1 ? "" : "s"}. Backup downloaded.`;
+    } catch (error) {
+      elements.importMessage.textContent = error.message || "Could not import that file.";
+    }
+  });
+
+  document.querySelector("#close-import").addEventListener("click", closeImportReview);
+  document.querySelector("#cancel-import").addEventListener("click", closeImportReview);
+  elements.importDialog.addEventListener("close", () => {
+    pendingImport = null;
+    elements.importMessage.textContent = "";
+  });
+  elements.importDialog.addEventListener("click", (event) => {
+    if (event.target === elements.importDialog) closeImportReview();
   });
 
   SlashStore.subscribe(() => refresh());
@@ -940,6 +1195,8 @@
       state = await SlashStore.getState();
       updateManagerTestHint();
       syncSettingsControls();
+      renderSiteExclusions();
+      await refreshStorageInfo();
       const preferences = await chrome.storage.local.get(["collapsedSections"]);
       if (Array.isArray(preferences.collapsedSections)) {
         preferences.collapsedSections.forEach((sectionId) => collapsedSections.add(String(sectionId)));

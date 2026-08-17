@@ -32,6 +32,10 @@ function createChromeStorage(initialSync = {}) {
       async get(keys) {
         return selectKeys(data, keys);
       },
+      async getBytesInUse(keys) {
+        const selected = selectKeys(data, keys);
+        return Object.entries(selected).reduce((total, [key, value]) => total + store.syncItemBytes(key, value), 0);
+      },
       async set(items) {
         const candidate = { ...data, ...clone(items) };
         for (const [key, value] of Object.entries(items)) {
@@ -71,6 +75,9 @@ function createChromeStorage(initialSync = {}) {
     },
     readSync() {
       return clone(syncData);
+    },
+    readLocal() {
+      return clone(localData);
     }
   };
 }
@@ -133,4 +140,55 @@ test("adding a command beyond the legacy per-item boundary saves in chunks", asy
   const saved = await store.getState();
   assert.equal(saved.commands.length, 9);
   assert.ok(saved.commands.some((command) => command.shortcut === "/new"));
+});
+
+test("moves the command library between sync and device-only storage", async () => {
+  const mock = createChromeStorage({
+    commands: [{ id: "synced", shortcut: "/sync", expansion: "Synced", enabled: true }],
+    sections: [],
+    settings: SlashDefaults.DEFAULT_SETTINGS,
+    stateVersion: SlashDefaults.STATE_VERSION
+  });
+  global.chrome = mock.chrome;
+
+  assert.equal(await store.getStorageMode(), "sync");
+  const localState = await store.setStorageMode("local");
+  assert.equal(localState.commands[0].shortcut, "/sync");
+  assert.equal(mock.readLocal().storageMode, "local");
+  assert.equal(mock.readLocal().localState.commands[0].shortcut, "/sync");
+
+  localState.commands.push({ id: "local", shortcut: "/local", expansion: "Local", enabled: true });
+  await store.saveState(localState);
+  assert.equal((await store.getState()).commands.length, 2);
+  assert.equal(mock.readSync().commands.length, 1);
+
+  await store.setStorageMode("sync");
+  assert.equal(await store.getStorageMode(), "sync");
+  assert.equal((await store.getState()).commands.length, 2);
+  assert.ok((await store.getStorageInfo()).bytesInUse > 0);
+});
+
+test("preflights the total Chrome Sync quota with a useful recovery message", async () => {
+  const mock = createChromeStorage({
+    commands: [],
+    sections: [],
+    settings: SlashDefaults.DEFAULT_SETTINGS,
+    stateVersion: SlashDefaults.STATE_VERSION
+  });
+  global.chrome = mock.chrome;
+
+  const oversized = await store.getState();
+  oversized.commands = Array.from({ length: 20 }, (_, index) => ({
+    id: `large-${index}`,
+    shortcut: `/large-${index}`,
+    expansion: `${index}-${"x".repeat(7990)}`,
+    enabled: true,
+    sectionId: null
+  }));
+
+  await assert.rejects(
+    store.saveState(oversized),
+    /too large for Chrome Sync.*This device only.*export a backup/iu
+  );
+  assert.deepEqual(mock.readSync().commands, []);
 });

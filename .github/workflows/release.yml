@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
           cache: npm
@@ -26,17 +26,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install extension-capable Chromium
+        run: npx playwright-core install chromium
+
       - name: Verify release tag
-        shell: pwsh
-        run: |
-          $manifest = Get-Content -Raw -LiteralPath "manifest.json" | ConvertFrom-Json
-          $expectedTag = "v$($manifest.version)"
-
-          if ($env:GITHUB_REF_NAME -ne $expectedTag) {
-            throw "Release tag '$env:GITHUB_REF_NAME' must match manifest version '$expectedTag'."
-          }
-
-          "RELEASE_ARCHIVE=dist/slash-expander-$expectedTag.zip" >> $env:GITHUB_ENV
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: npm run version:check
 
       - name: Build validated extension ZIP
         run: npm run release
@@ -46,7 +42,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create $env:GITHUB_REF_NAME $env:RELEASE_ARCHIVE `
+          gh release create $env:GITHUB_REF_NAME "dist/slash-expander-$env:GITHUB_REF_NAME.zip" `
             --verify-tag `
             --generate-notes `
             --title "/Expander $env:GITHUB_REF_NAME"

@@ -79,6 +79,21 @@ test("auto-expand disables delimiter methods", () => {
   assert.equal(core.isKeyEnabled("Enter", settings), false);
 });
 
+test("auto-expand only responds to insertion events", () => {
+  assert.equal(core.isAutoExpansionInput("insertText"), true);
+  assert.equal(core.isAutoExpansionInput("insertFromPaste"), true);
+  assert.equal(core.isAutoExpansionInput(""), true);
+  assert.equal(core.isAutoExpansionInput("historyUndo"), false);
+  assert.equal(core.isAutoExpansionInput("deleteContentBackward"), false);
+});
+
+test("matches exact and child hostnames in the exclusion list", () => {
+  const settings = { excludedSites: ["example.com"] };
+  assert.equal(core.isSiteExcluded({ hostname: "example.com" }, settings), true);
+  assert.equal(core.isSiteExcluded({ hostname: "mail.example.com" }, settings), true);
+  assert.equal(core.isSiteExcluded({ hostname: "example.org" }, settings), false);
+});
+
 test("describes the active expansion methods", () => {
   assert.equal(core.triggerHint({ expandOnSpace: true, expandOnTab: true, expandOnEnter: true }), "Press Space, Tab or Enter to expand.");
   assert.equal(core.triggerHint({ expandOnSpace: false, expandOnTab: true, expandOnEnter: true }), "Press Tab or Enter to expand.");

@@ -29,15 +29,17 @@ Raw keystrokes and website field contents are not logged, retained as a browsing
 
 /Expander stores an aggregate use count and timestamps for each command. This information powers the **Most used commands** and **Still use these?** sections in the command manager. It does not contain a browsing history, page URL, or copy of the surrounding website content.
 
-### Interface preferences
+### Interface and site preferences
 
-The extension stores interface preferences, such as collapsed categories, so the command manager can preserve the user's chosen layout.
+The extension stores interface preferences, such as collapsed categories, so the command manager can preserve the user's chosen layout. Users can pause expansion on specific website domains; those domain names are stored with the extension settings and are used only to prevent expansion on matching sites.
 
 ## Storage and synchronization
 
-Commands, expansion text, categories, and expansion-method settings are stored with `chrome.storage.sync`. When Chrome Sync is enabled, Chrome may synchronize this information between the user's signed-in Chrome profiles according to the user's Chrome Sync settings and Google's privacy practices. The /Expander developer does not receive or control this synchronized data.
+By default, commands, expansion text, categories, paused-site domains, and expansion-method settings are stored with `chrome.storage.sync`. When Chrome Sync is enabled, Chrome may synchronize this information between the user's signed-in Chrome profiles according to the user's Chrome Sync settings and Google's privacy practices. The /Expander developer does not receive or control this synchronized data.
 
-Command usage information and interface preferences are stored with `chrome.storage.local` in the user's Chrome profile and are not synchronized by /Expander.
+Users can select **This device only** in Settings. In that mode, the command library and settings are stored with `chrome.storage.local` in the current Chrome profile instead of being synchronized by /Expander. Switching modes copies the active library to the selected storage area; the previous synced copy is retained as a fallback unless the user clears it through Chrome.
+
+Command usage information, the selected storage mode, and interface preferences are stored with `chrome.storage.local` in the user's Chrome profile and are not synchronized by /Expander.
 
 Users may also choose to export their command library to a file or import a library from a file. These actions occur only when initiated by the user.
 

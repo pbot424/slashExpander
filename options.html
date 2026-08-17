@@ -222,6 +222,36 @@
             </div>
           </fieldset>
         </section>
+        <section class="settings-panel paused-sites" aria-labelledby="paused-sites-title">
+          <div class="settings-section-heading">
+            <h3 id="paused-sites-title">Paused sites</h3>
+            <p>/Expander will not replace shortcuts on these domains.</p>
+          </div>
+          <form id="site-exclusion-form" class="site-exclusion-form">
+            <label class="visually-hidden" for="site-exclusion">Website domain</label>
+            <input id="site-exclusion" type="text" placeholder="example.com" autocomplete="off" spellcheck="false">
+            <button class="secondary-button" type="submit">Add</button>
+          </form>
+          <div id="site-exclusion-list" class="site-exclusion-list"></div>
+          <p id="site-exclusion-message" class="settings-inline-message" role="status" aria-live="polite"></p>
+        </section>
+        <section class="settings-panel settings-storage" aria-labelledby="storage-settings-title">
+          <div class="settings-section-heading storage-heading">
+            <h3 id="storage-settings-title">Storage</h3>
+            <label class="storage-mode-control" for="storage-mode">
+              <span class="visually-hidden">Storage mode</span>
+              <select id="storage-mode">
+                <option value="sync">Chrome Sync</option>
+                <option value="local">This device only</option>
+              </select>
+            </label>
+          </div>
+          <div class="storage-usage-row">
+            <progress id="storage-usage-progress" value="0" max="100"></progress>
+            <span id="storage-usage">Calculating storage…</span>
+          </div>
+          <p class="storage-caution">Avoid saving passwords, payment details, or other secrets in command expansions.</p>
+        </section>
         <section class="settings-data" aria-labelledby="settings-data-title">
           <div>
             <h3 id="settings-data-title">Data</h3>
@@ -235,6 +265,42 @@
         </section>
         <p id="settings-message" class="settings-message" role="status" aria-live="polite"></p>
       </div>
+    </dialog>
+
+    <dialog id="import-dialog" class="settings-dialog import-dialog" aria-labelledby="import-title">
+      <div class="settings-dialog-header">
+        <div>
+          <h2 id="import-title">Review import</h2>
+          <p id="import-file-name" class="dialog-subtitle"></p>
+        </div>
+        <button id="close-import" class="dialog-close" type="button" aria-label="Close import review">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <form id="import-form" class="import-form">
+        <div id="import-summary" class="import-summary" aria-live="polite"></div>
+        <fieldset class="import-mode-options">
+          <legend>Import method</legend>
+          <label>
+            <span><strong>Merge</strong><small>Add new commands and keep existing commands when shortcuts conflict.</small></span>
+            <input type="radio" name="import-mode" value="merge" checked>
+          </label>
+          <label>
+            <span><strong>Replace</strong><small>Replace the current command library and categories with this file.</small></span>
+            <input type="radio" name="import-mode" value="replace">
+          </label>
+        </fieldset>
+        <label class="import-settings-option">
+          <span><strong>Import settings</strong><small>Apply expansion methods and paused sites from this file when available.</small></span>
+          <input id="import-settings" type="checkbox" checked>
+        </label>
+        <p class="import-backup-note">A backup of your current library will download before changes are applied.</p>
+        <div class="formula-actions">
+          <button id="apply-import" class="primary-button" type="submit">Import commands</button>
+          <button id="cancel-import" class="secondary-button" type="button">Cancel</button>
+        </div>
+        <p id="import-message" class="settings-message" role="status" aria-live="polite"></p>
+      </form>
     </dialog>
 
     <dialog id="formula-dialog" class="settings-dialog formula-dialog" aria-labelledby="formula-title">
