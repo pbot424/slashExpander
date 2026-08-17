@@ -6,7 +6,9 @@
   "scripts": {
     "check": "node --test tests/*.test.cjs && node scripts/validate-extension.mjs",
     "e2e": "node tests/extension.e2e.mjs",
-    "icons": "powershell -ExecutionPolicy Bypass -File scripts/generate-icons.ps1"
+    "icons": "powershell -ExecutionPolicy Bypass -File scripts/generate-icons.ps1",
+    "release": "npm run check && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-release.ps1",
+    "store-assets": "npm run icons && node scripts/capture-store-listing.mjs"
   },
   "devDependencies": {
     "playwright-core": "^1.62.1"
