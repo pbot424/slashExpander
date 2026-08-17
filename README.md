@@ -73,6 +73,10 @@ To use it, select **Insert formula** beside the Expansion field and choose **PO 
 
 Chrome does not allow extensions to run on internal pages such as `chrome://` URLs or the Chrome Web Store. Canvas-based editors and other editors that do not expose standard text controls may not support expansion. To use /Expander on local `file://` pages, enable **Allow access to file URLs** in the extension details.
 
+## Privacy
+
+/Expander has no developer-owned backend, analytics, or advertising. Read the full [Privacy Policy](PRIVACY.md) for details about local processing and Chrome Sync storage.
+
 ## For contributors
 
 The extension uses plain HTML, CSS, and JavaScript. Node.js is only required for automated verification.
@@ -90,3 +94,11 @@ Regenerate the PNG icons from the source SVG with:
 ```powershell
 npm.cmd run icons
 ```
+
+Create a validated Chrome Web Store ZIP with only the extension's runtime files:
+
+```powershell
+npm.cmd run release
+```
+
+The release is written to `dist/slash-expander-v<version>.zip`, using the version from `manifest.json`.
