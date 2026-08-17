@@ -4,14 +4,15 @@ const defaults = require("../shared/defaults.js");
 
 test("new installs start with no premade commands", () => {
   const state = defaults.cloneDefaults();
-  assert.equal(state.stateVersion, 3);
+  assert.equal(state.stateVersion, 4);
   assert.deepEqual(state.commands, []);
   assert.deepEqual(state.sections, []);
   assert.deepEqual(state.settings, {
     expandOnSpace: true,
     expandOnTab: true,
     expandOnEnter: true,
-    autoExpand: false
+    autoExpand: false,
+    excludedSites: []
   });
 });
 
@@ -36,4 +37,11 @@ test("version 3 migration preserves an explicit section assignment", () => {
   const command = { id: "custom", shortcut: "/work", expansion: "Work", sectionId: "section-work" };
   assert.deepEqual(defaults.migrateCommands([command], 3), [command]);
   assert.notEqual(defaults.migrateCommands([command], 3)[0], command);
+});
+
+test("normalizes and deduplicates excluded sites", () => {
+  assert.deepEqual(
+    defaults.sanitizeExcludedSites(["Example.com", "https://example.com/path", "mail.example.com", "not a host"]),
+    ["example.com", "mail.example.com"]
+  );
 });

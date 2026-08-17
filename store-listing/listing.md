@@ -21,8 +21,10 @@ Build a shortcut library that fits the way you work:
 - Use Dynamic Formulas, including the PO Date Range preset, for text that updates when expanded.
 - Review your most-used commands and find older commands you may no longer need.
 - Import and export your command library whenever you need a backup.
+- Pause expansion on individual websites whenever you need to.
+- Choose Chrome Sync or keep your command library only on the current device.
 
-Your commands and settings are stored through Chrome Sync. /Expander has no external backend, analytics, or advertising.
+Your commands and settings stay in your selected Chrome storage area. /Expander has no external backend, analytics, or advertising.
 
 ## Assets
 
@@ -38,7 +40,7 @@ Your commands and settings are stored through Chrome Sync. /Expander has no exte
 
 ### Storage
 
-The storage permission is required to save the user's commands, categories, expansion settings, and interface preferences. Commands, categories, and expansion settings use Chrome Sync so they remain available across the user's signed-in Chrome profiles. Aggregate per-command usage counts and timestamps are stored locally to provide the Most used commands and Still use these? dashboard sections. This information is not sent to the developer or an external service.
+The storage permission is required to save the user's commands, categories, expansion settings, paused-site domains, storage choice, and interface preferences. By default, the command library uses Chrome Sync so it can remain available across the user's signed-in Chrome profiles. Users can instead choose device-only storage. Aggregate per-command usage counts and timestamps are stored locally to provide the Most used commands and Still use these? dashboard sections. This information is not sent to the developer or an external service.
 
 ### Scripting
 
@@ -69,4 +71,4 @@ Leave these categories unselected because /Expander does not intentionally acces
 - Location
 - Web history
 
-Commands, categories, and expansion settings are stored through `chrome.storage.sync`. Chrome may sync that data according to the user's Chrome Sync settings, but the developer does not receive or have access to it. Usage counts, last-used timestamps, and interface preferences remain in `chrome.storage.local`. /Expander does not operate an external server, sell data, use data for advertising, or share data with third parties.
+Commands, categories, expansion settings, and paused-site domains use `chrome.storage.sync` by default. Chrome may sync that data according to the user's Chrome Sync settings, but the developer does not receive or have access to it. Users can select device-only storage, which keeps the active command library and settings in `chrome.storage.local` instead. Usage counts, last-used timestamps, the selected storage mode, and interface preferences remain in `chrome.storage.local`. /Expander does not operate an external server, sell data, use data for advertising, or share data with third parties.

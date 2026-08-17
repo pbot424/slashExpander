@@ -24,9 +24,8 @@ function recordCommandUsage(commandId) {
 }
 
 async function migrateState() {
-  const stored = await chrome.storage.sync.get(["stateVersion"]);
-  const fromVersion = stored.stateVersion || 1;
   const state = await SlashStore.getState();
+  const fromVersion = state.stateVersion || 1;
   if (fromVersion < SlashDefaults.STATE_VERSION) {
     state.commands = SlashDefaults.migrateCommands(state.commands, fromVersion);
   }

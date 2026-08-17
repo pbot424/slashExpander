@@ -2,7 +2,7 @@
 
 /Expander is a Chrome extension that turns short commands into text you use often. Create a shortcut such as `/hello`, type it into a text field, and expand it into a complete message without copying and pasting.
 
-Everything runs in your browser. Your commands are stored with Chrome Sync and are not sent to an external service.
+Everything runs in your browser. Choose Chrome Sync or device-only storage; your commands are never sent to a developer-operated service.
 
 ## What you can do
 
@@ -14,6 +14,7 @@ Everything runs in your browser. Your commands are stored with Chrome Sync and a
 - Choose whether each command is case-sensitive.
 - Add Dynamic Formulas that calculate changing values when a command is used.
 - Import or export your command library from Settings.
+- Pause expansion on specific websites without disabling the extension everywhere.
 - See your most-used commands and identify commands you may no longer need.
 - Test commands from the extension popup or the command manager.
 
@@ -67,15 +68,13 @@ To use it, select **Insert formula** beside the Expansion field and choose **PO 
 
 ## Privacy and storage
 
-/Expander has no backend, analytics service, or account system. Commands and settings are saved through `chrome.storage.sync` so Chrome can make them available in other signed-in Chrome profiles. Import and export give you an additional way to back up or move your command library.
+/Expander has no developer-owned backend, analytics, advertising, or account system. By default, commands and settings are saved through `chrome.storage.sync` so Chrome can make them available in other signed-in Chrome profiles. Users can instead choose **This device only** from Settings, and import/export provides an additional backup and migration option.
+
+Command expansions can contain user-provided text, so avoid storing passwords, payment details, or other secrets. Read the full [Privacy Policy](PRIVACY.md) for details about local processing, Chrome Sync, and user controls.
 
 ## Chrome limitations
 
 Chrome does not allow extensions to run on internal pages such as `chrome://` URLs or the Chrome Web Store. Canvas-based editors and other editors that do not expose standard text controls may not support expansion. To use /Expander on local `file://` pages, enable **Allow access to file URLs** in the extension details.
-
-## Privacy
-
-/Expander has no developer-owned backend, analytics, or advertising. Read the full [Privacy Policy](PRIVACY.md) for details about local processing and Chrome Sync storage.
 
 ## For contributors
 
@@ -85,6 +84,7 @@ The extension uses plain HTML, CSS, and JavaScript. Node.js is only required for
 npm.cmd install
 npm.cmd run check
 npm.cmd run e2e
+npm.cmd run verify
 ```
 
 `npm run check` runs the unit tests and validates the Manifest V3 files. `npm run e2e` loads the extension in a temporary Chromium profile and exercises the primary user flows. Set `EXPANDER_CHROMIUM_PATH` if Chromium is installed in a nonstandard location.
@@ -103,11 +103,17 @@ npm.cmd run release
 
 The release is written to `dist/slash-expander-v<version>.zip`, using the version from `manifest.json`.
 
+Update all project version files together with:
+
+```powershell
+npm.cmd run version:set -- 0.4.1
+```
+
 To publish that ZIP as a GitHub Release, push a version tag that matches `manifest.json`:
 
 ```powershell
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 The GitHub Actions release workflow runs the project checks, builds the validated ZIP, generates release notes, and attaches the ZIP to a release named `/Expander v<version>`.

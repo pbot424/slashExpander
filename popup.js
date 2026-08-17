@@ -3,7 +3,9 @@
 
   const quickTest = document.querySelector("#quick-test");
   const testHint = document.querySelector("#test-hint");
+  const siteToggle = document.querySelector("#site-toggle");
   let state = SlashDefaults.cloneDefaults();
+  let activeSite = "";
 
   function openManager(isNew = false) {
     const query = isNew ? "?new=1" : "";
@@ -15,9 +17,29 @@
     try {
       state = await SlashStore.getState();
       testHint.textContent = SlashExpansion.triggerHint(state.settings);
+      renderSiteToggle();
     } catch (error) {
       console.error(error);
     }
+  }
+
+  async function loadActiveSite() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    try {
+      const url = new URL(tab?.url || "");
+      activeSite = ["http:", "https:"].includes(url.protocol) ? url.hostname.toLowerCase() : "";
+    } catch {
+      activeSite = "";
+    }
+    renderSiteToggle();
+  }
+
+  function renderSiteToggle() {
+    siteToggle.hidden = !activeSite;
+    if (!activeSite) return;
+    const paused = SlashExpansion.isSiteExcluded({ hostname: activeSite }, state.settings);
+    siteToggle.textContent = paused ? `Resume on ${activeSite}` : `Pause on ${activeSite}`;
+    siteToggle.setAttribute("aria-pressed", String(paused));
   }
 
   function expandQuickTest(key) {
@@ -49,12 +71,29 @@
 
   quickTest.addEventListener("input", (event) => {
     if (!event.isTrusted || event.isComposing || !SlashExpansion.isAutoEnabled(state.settings)) return;
+    if (!SlashExpansion.isAutoExpansionInput(event.inputType)) return;
     expandQuickTest("Auto");
   });
 
   document.querySelector("#new-command").addEventListener("click", () => openManager(true));
   document.querySelector("#manage-commands").addEventListener("click", () => openManager());
+  siteToggle.addEventListener("click", async () => {
+    if (!activeSite) return;
+    try {
+      const excludedSites = SlashDefaults.sanitizeExcludedSites(state.settings.excludedSites);
+      const paused = SlashExpansion.isSiteExcluded({ hostname: activeSite }, { excludedSites });
+      state.settings.excludedSites = paused
+        ? excludedSites.filter((site) => !(activeSite === site || activeSite.endsWith(`.${site}`)))
+        : SlashDefaults.sanitizeExcludedSites([...excludedSites, activeSite]);
+      state = await SlashStore.saveState(state);
+      testHint.textContent = paused ? `Resumed on ${activeSite}.` : `Paused on ${activeSite}.`;
+      renderSiteToggle();
+    } catch (error) {
+      testHint.textContent = error.message || "Could not update this site.";
+    }
+  });
   SlashStore.subscribe(refresh);
   chrome.runtime.sendMessage({ type: "activate-open-tabs" }).catch(() => {});
+  loadActiveSite().catch(() => {});
   refresh();
 })();

@@ -1224,6 +1224,125 @@ body {
   font-size: 12px;
 }
 
+.settings-panel {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.storage-mode-control {
+  margin-left: auto;
+}
+
+.storage-mode-control select {
+  min-width: 156px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.storage-heading {
+  display: grid;
+  grid-template-columns: auto minmax(156px, auto);
+  align-items: center;
+  gap: 4px 18px;
+}
+
+.storage-heading h3 {
+  margin-bottom: 0;
+}
+
+.storage-usage-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.storage-usage-row progress {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  accent-color: #099a5b;
+}
+
+.storage-usage-row span,
+.storage-caution,
+.settings-inline-message {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.storage-caution {
+  margin: 10px 0 0;
+  line-height: 1.45;
+}
+
+.site-exclusion-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.site-exclusion-form input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.site-exclusion-form .secondary-button {
+  min-height: 38px;
+}
+
+.site-exclusion-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.site-exclusion-row {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 6px 11px;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.site-exclusion-row button {
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.site-exclusion-row button:hover {
+  background: #fff;
+  color: var(--ink);
+}
+
+.settings-inline-message {
+  min-height: 15px;
+  margin: 6px 0 0;
+}
+
 .settings-data {
   display: flex;
   align-items: center;
@@ -1254,6 +1373,121 @@ body {
 .settings-data-actions .secondary-button {
   min-height: 36px;
   padding: 0 10px;
+}
+
+.dialog-subtitle {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.import-dialog {
+  width: min(92vw, 580px);
+}
+
+.import-form {
+  padding: 22px 24px 26px;
+}
+
+.import-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.import-summary-item {
+  display: grid;
+  gap: 2px;
+  padding: 11px;
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.import-summary-item strong {
+  color: #087a49;
+  font-size: 18px;
+}
+
+.import-summary-item span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.import-mode-options {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.import-mode-options legend {
+  padding: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.import-mode-options label,
+.import-settings-option {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 14px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.import-mode-options label + label {
+  border-top: 1px solid var(--line);
+}
+
+.import-mode-options label:has(input:checked),
+.import-settings-option:has(input:checked) {
+  background: var(--coral-wash);
+}
+
+.import-mode-options span,
+.import-settings-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.import-mode-options strong,
+.import-settings-option strong {
+  font-size: 13px;
+}
+
+.import-mode-options small,
+.import-settings-option small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.import-mode-options input,
+.import-settings-option input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--coral);
+}
+
+.import-settings-option {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.import-backup-note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 @media (max-width: 980px) {
@@ -1361,6 +1595,14 @@ body {
     align-items: flex-start;
     flex-direction: column;
     gap: 12px;
+  }
+
+  .storage-mode-control select {
+    min-width: 144px;
+  }
+
+  .import-summary {
+    grid-template-columns: 1fr;
   }
 
   .settings-dialog-header {

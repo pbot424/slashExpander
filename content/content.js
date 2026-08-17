@@ -153,6 +153,7 @@
   document.addEventListener("keydown", (event) => {
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
     if (!SlashExpansion.isSupportedKey(event.key) || !SlashExpansion.isKeyEnabled(event.key, settings)) return;
+    if (SlashExpansion.isSiteExcluded(location, settings)) return;
 
     const target = getEditableTarget(event);
     if (!target || target.matches("[readonly], [disabled]")) return;
@@ -162,10 +163,10 @@
     const command = SlashExpansion.findMatchingCommand(beforeText, commands);
     if (!command) return;
 
-    event.preventDefault();
     const expanded = expandTarget(target, command, event.key);
 
     if (expanded) {
+      event.preventDefault();
       recordUsage(command);
     } else {
       console.debug("/Expander found a shortcut but could not replace it in this editor.");
@@ -174,6 +175,7 @@
 
   document.addEventListener("input", (event) => {
     if (!event.isTrusted || event.isComposing || !SlashExpansion.isAutoEnabled(settings)) return;
+    if (!SlashExpansion.isAutoExpansionInput(event.inputType) || SlashExpansion.isSiteExcluded(location, settings)) return;
     const target = getEditableTarget(event);
     if (!target || target.matches("[readonly], [disabled]")) return;
     const beforeText = textBeforeTargetCaret(target);

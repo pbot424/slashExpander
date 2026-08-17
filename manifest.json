@@ -2,10 +2,15 @@
   "manifest_version": 3,
   "name": "/Expander",
   "short_name": "/Expander",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Expand custom shortcuts into saved text anywhere you type.",
-  "permissions": ["storage", "scripting"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -29,8 +34,16 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["shared/defaults.js", "shared/template-engine.js", "shared/expansion-core.js", "shared/storage.js", "content/content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "shared/defaults.js",
+        "shared/template-engine.js",
+        "shared/expansion-core.js",
+        "shared/storage.js",
+        "content/content.js"
+      ],
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true,

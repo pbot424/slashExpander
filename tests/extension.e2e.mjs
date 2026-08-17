@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import http from "node:http";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const sourceManifest = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
 const playwrightRoot = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "ms-playwright") : "";
 const installedChromium = existsSync(playwrightRoot)
   ? readdirSync(playwrightRoot)
@@ -102,7 +103,7 @@ try {
   assert.ok(extensionId, "Extension service worker did not expose an ID.");
   const extensionManifest = await serviceWorker.evaluate(() => chrome.runtime.getManifest());
   assert.equal(extensionManifest.name, "/Expander");
-  assert.equal(extensionManifest.version, "0.3.0");
+  assert.equal(extensionManifest.version, sourceManifest.version);
   assert.deepEqual(extensionManifest.host_permissions, ["<all_urls>"]);
 
   const page = monitor(await context.newPage(), "website");
@@ -229,7 +230,7 @@ try {
   const initialState = await getSyncedState(options);
   assert.deepEqual(initialState.commands, []);
   assert.deepEqual(initialState.sections, []);
-  assert.equal(initialState.stateVersion, 3);
+  assert.equal(initialState.stateVersion, 4);
   const creationControls = await options.evaluate(() => {
     const heading = document.querySelector(".library-heading");
     const command = document.querySelector("#create-command");
@@ -300,8 +301,22 @@ try {
   await options.getByRole("button", { name: "Settings" }).click();
   assert.equal(await options.getByRole("heading", { name: "Settings", exact: true }).count(), 1);
   assert.equal(await options.getByRole("heading", { name: "Expand when", exact: true }).count(), 1);
+  assert.equal(await options.getByRole("heading", { name: "Storage", exact: true }).count(), 1);
   assert.equal(await options.getByRole("heading", { name: "Data", exact: true }).count(), 1);
   assert.equal(await options.getByRole("heading", { name: "Command data", exact: true }).count(), 0);
+  assert.equal(await options.getByText("Store command library", { exact: true }).count(), 0);
+  assert.equal(await options.getByText("No paused sites.", { exact: true }).count(), 0);
+  assert.equal(await options.getByText("Choose whether your command library syncs through Chrome or stays on this device.", { exact: true }).count(), 0);
+  assert.ok(await options.evaluate(() => {
+    const heading = document.querySelector("#storage-settings-title").getBoundingClientRect();
+    const selector = document.querySelector("#storage-mode").getBoundingClientRect();
+    return Math.abs((heading.top + heading.height / 2) - (selector.top + selector.height / 2)) <= 2;
+  }));
+  assert.ok(await options.evaluate(() => {
+    const paused = document.querySelector(".paused-sites");
+    const storage = document.querySelector(".settings-storage");
+    return paused.compareDocumentPosition(storage) === Node.DOCUMENT_POSITION_FOLLOWING;
+  }));
   assert.equal(await options.locator(".trigger-key-options > label").count(), 3);
   assert.equal(await options.locator(".auto-expand-option").count(), 1);
   assert.equal(await options.locator(".trigger-options").evaluate((container) => (
@@ -316,6 +331,28 @@ try {
   const download = await downloadPromise;
   assert.equal(download.suggestedFilename(), "expander-commands.json");
 
+  await options.locator("#storage-mode").selectOption("local");
+  await waitForValue(
+    () => options.evaluate(() => chrome.storage.local.get(["storageMode"]).then((stored) => stored.storageMode)),
+    "local"
+  );
+  assert.equal(await options.locator("#storage-mode").inputValue(), "local");
+  assert.equal(await options.locator("#storage-usage-progress").getAttribute("max"), "10485760");
+  options.once("dialog", (dialog) => dialog.accept());
+  await options.locator("#storage-mode").selectOption("sync");
+  await waitForValue(
+    () => options.evaluate(() => chrome.storage.local.get(["storageMode"]).then((stored) => stored.storageMode)),
+    "sync"
+  );
+
+  await options.locator("#import-file").setInputFiles({
+    name: "future.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ format: "expander-commands", version: 999, commands: [{ shortcut: "/future", expansion: "Future" }] }))
+  });
+  assert.equal(await options.locator("#settings-message").textContent(), "This backup was created by a newer version of /Expander.");
+  assert.equal(await options.locator("#import-dialog").evaluate((dialog) => dialog.open), false);
+
   await options.locator("#import-file").setInputFiles({
     name: "import.json",
     mimeType: "application/json",
@@ -324,19 +361,58 @@ try {
       commands: [{ shortcut: "!imported", expansion: "Imported text", enabled: true, sectionId: "source-section" }]
     }))
   });
+  assert.equal(await options.locator("#import-dialog").evaluate((dialog) => dialog.open), true);
+  assert.deepEqual(await options.locator("#import-summary strong").allTextContents(), ["1", "0", "0"]);
+  const backupPromise = options.waitForEvent("download");
+  await options.getByRole("button", { name: "Import commands" }).click();
+  const backup = await backupPromise;
+  assert.match(backup.suggestedFilename(), /^expander-commands-backup-\d{4}-\d{2}-\d{2}T/u);
   await waitForValue(() => options.locator("#library-count").textContent(), "1");
   const storedAfterImport = await getSyncedState(options);
   const importedSection = storedAfterImport.sections.find((section) => section.name === "Imported");
   assert.ok(importedSection);
   assert.ok(storedAfterImport.commands.some((command) => command.shortcut === "!imported" && command.sectionId === importedSection.id));
-  assert.equal(await options.locator("#settings-message").textContent(), "Imported 1 command.");
+  assert.equal(await options.locator("#settings-message").textContent(), "Imported 1 command. Backup downloaded.");
+
+  await options.locator("#import-file").setInputFiles({
+    name: "conflict.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({
+      format: "expander-commands",
+      version: 4,
+      commands: [{ shortcut: "!IMPORTED", expansion: "Conflicting replacement", enabled: true }]
+    }))
+  });
+  assert.deepEqual(await options.locator("#import-summary strong").allTextContents(), ["0", "1", "0"]);
+  const conflictBackupPromise = options.waitForEvent("download");
+  await options.getByRole("button", { name: "Import commands" }).click();
+  await conflictBackupPromise;
+  await waitForValue(() => options.locator("#settings-message").textContent(), "Imported 0 commands. Backup downloaded.");
+  assert.equal((await getSyncedState(options)).commands.find((command) => command.shortcut === "!imported")?.expansion, "Imported text");
+
+  await options.locator("#import-file").setInputFiles({
+    name: "replacement.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({
+      format: "expander-commands",
+      version: 4,
+      sections: [{ id: "replacement-section", name: "Imported" }],
+      commands: [{ shortcut: "!imported", expansion: "Replaced text", enabled: true, sectionId: "replacement-section" }]
+    }))
+  });
+  await options.locator("input[name='import-mode'][value='replace']").check();
+  const replacementBackupPromise = options.waitForEvent("download");
+  await options.getByRole("button", { name: "Import commands" }).click();
+  await replacementBackupPromise;
+  await waitForValue(() => options.locator("#settings-message").textContent(), "Imported 1 command. Backup downloaded.");
+  assert.equal((await getSyncedState(options)).commands.find((command) => command.shortcut === "!imported")?.expansion, "Replaced text");
   await options.getByRole("button", { name: "Close settings" }).click();
   await options.getByRole("button", { name: /!imported/ }).click();
   assert.equal(await options.locator("#manager-dashboard").isHidden(), true);
   await options.locator("#expansion").fill("Unsaved edit");
   await options.getByRole("button", { name: "Close command editor" }).click();
   await options.getByRole("button", { name: /!imported/ }).click();
-  assert.equal(await options.locator("#expansion").inputValue(), "Imported text");
+  assert.equal(await options.locator("#expansion").inputValue(), "Replaced text");
   assert.equal((await options.getByRole("button", { name: "Delete command" }).textContent()).trim(), "");
   options.once("dialog", (dialog) => dialog.accept());
   await options.getByRole("button", { name: "Delete command" }).click();
@@ -624,6 +700,10 @@ try {
   await page.locator("#plain").press("Space");
   assert.equal(await page.locator("#plain").inputValue(), "hello/aurora ");
 
+  await page.locator("#plain").fill("/not-saved");
+  await page.locator("#plain").press("Tab");
+  assert.equal(await page.evaluate(() => document.activeElement?.id), "multiline");
+
   async function waitForSetting(name, expected) {
     await waitForValue(
       () => options.evaluate((key) => chrome.storage.sync.get(["settings"]).then((stored) => stored.settings[key]), name),
@@ -637,6 +717,24 @@ try {
   assert.equal(await options.locator("#expand-tab").isChecked(), true);
   assert.equal(await options.locator("#expand-enter").isChecked(), true);
   assert.equal(await options.locator("#expand-auto").isChecked(), false);
+  assert.equal(await options.getByRole("heading", { name: "Paused sites", exact: true }).count(), 1);
+  await options.locator("#site-exclusion").fill("127.0.0.1");
+  await options.locator("#site-exclusion-form").getByRole("button", { name: "Add" }).click();
+  await waitForValue(
+    () => options.evaluate(() => chrome.storage.sync.get(["settings"]).then((stored) => stored.settings.excludedSites.join(","))),
+    "127.0.0.1"
+  );
+  assert.equal(await options.getByRole("button", { name: "Resume /Expander on 127.0.0.1" }).count(), 1);
+  await options.getByRole("button", { name: "Close settings" }).click();
+  await page.locator("#plain").fill("/aurora");
+  await page.locator("#plain").press("Space");
+  assert.equal(await page.locator("#plain").inputValue(), "/aurora ");
+  await options.getByRole("button", { name: "Settings" }).click();
+  await options.getByRole("button", { name: "Resume /Expander on 127.0.0.1" }).click();
+  await waitForValue(
+    () => options.evaluate(() => chrome.storage.sync.get(["settings"]).then((stored) => stored.settings.excludedSites.length)),
+    0
+  );
   await options.locator("#expand-space").uncheck();
   await waitForSetting("expandOnSpace", false);
   await waitForValue(() => options.locator("#manager-test-hint").textContent(), "Press Tab or Enter to expand.");
@@ -823,6 +921,9 @@ try {
       "formula validation",
       "collision-safe command duplication drafts",
       "chunked Chrome Sync quota handling",
+      "total Chrome Sync quota preflight",
+      "device-only library storage",
+      "storage usage feedback",
       "input",
       "textarea",
       "contenteditable",
@@ -847,6 +948,10 @@ try {
       "CRUD",
       "search",
       "import/export in settings",
+      "validated import preview with merge and replace",
+      "automatic pre-import backups",
+      "per-site pause controls",
+      "failed expansion key pass-through",
       "creator footer",
       "responsive layout",
       "console health"

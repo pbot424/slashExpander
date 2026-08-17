@@ -20,6 +20,16 @@
     return settings.autoExpand === true;
   }
 
+  function isAutoExpansionInput(inputType) {
+    return !inputType || String(inputType).startsWith("insert");
+  }
+
+  function isSiteExcluded(locationLike, settings = {}) {
+    const hostname = String(locationLike?.hostname || "").toLowerCase();
+    if (!hostname || !Array.isArray(settings.excludedSites)) return false;
+    return settings.excludedSites.some((site) => hostname === site || hostname.endsWith(`.${site}`));
+  }
+
   function triggerHint(settings = {}) {
     if (settings.autoExpand === true) return "Auto-Expand is on.";
     const methods = [
@@ -110,7 +120,9 @@
     expandText,
     findMatchingCommand,
     isAutoEnabled,
+    isAutoExpansionInput,
     isKeyEnabled,
+    isSiteExcluded,
     isSupportedKey,
     resolveCommandExpansion,
     triggerHint

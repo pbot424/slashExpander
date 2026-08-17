@@ -73,6 +73,28 @@ body {
   font-size: 12px;
 }
 
+.site-toggle {
+  align-self: flex-start;
+  margin: -8px 24px 6px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.site-toggle:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.site-toggle[aria-pressed="true"] {
+  color: #087a49;
+}
+
 .popup-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 112px;
