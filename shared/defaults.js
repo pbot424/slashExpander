@@ -1,10 +1,12 @@
 (function exposeDefaults(global) {
   "use strict";
 
-  const STATE_VERSION = 4;
+  const STATE_VERSION = 6;
   const DEFAULT_COMMANDS = [];
   const DEFAULT_SECTIONS = [];
   const RETIRED_STARTER_IDS = new Set(["starter-aurora", "starter-email", "starter-signature"]);
+  const LEGACY_PO_DATE_RANGE_PRESET = "{{date:today|addDays:1|format:MM/DD}}-{{date:today|addDays:11|format:MM/DD}}";
+  const PO_DATE_RANGE_PRESET = "{{date:today|addDays:1|format:MM/DD}}-{{date:today|startOfWeek:monday|addDays:11|format:MM/DD}}";
 
   const DEFAULT_SETTINGS = {
     expandOnSpace: true,
@@ -54,15 +56,23 @@
     if (!Array.isArray(commands)) return [];
     return commands
       .filter((command) => fromVersion >= 2 || !RETIRED_STARTER_IDS.has(command && command.id))
-      .map((command) => ({
-        ...command,
-        sectionId: typeof command?.sectionId === "string" && command.sectionId ? command.sectionId : null
-      }));
+      .map((command) => {
+        const migrated = {
+          ...command,
+          sectionId: typeof command?.sectionId === "string" && command.sectionId ? command.sectionId : null
+        };
+        if (fromVersion < 5 && typeof migrated.expansion === "string") {
+          migrated.expansion = migrated.expansion.replaceAll(LEGACY_PO_DATE_RANGE_PRESET, PO_DATE_RANGE_PRESET);
+        }
+        if (fromVersion < 6) migrated.caseSensitive = false;
+        return migrated;
+      });
   }
 
   const api = {
     STATE_VERSION,
     DEFAULT_SETTINGS,
+    PO_DATE_RANGE_PRESET,
     cloneDefaults,
     migrateCommands,
     normalizeSite,

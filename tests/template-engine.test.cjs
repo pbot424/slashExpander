@@ -8,8 +8,17 @@ const nextMonday = new Date(2026, 7, 24, 8, 15);
 const peoria = "PEORIA {{date:today|addDays:1|format:MM/DD}}-{{date:today|startOfWeek:monday|addDays:11|format:MM/DD}}";
 
 test("resolves the purchase-order range relative to the current week", () => {
-  assert.equal(template.resolveTemplate(peoria, { now: monday }).value, "PEORIA 08/18-08/28");
-  assert.equal(template.resolveTemplate(peoria, { now: tuesday }).value, "PEORIA 08/19-08/28");
+  [
+    [monday, "PEORIA 08/18-08/28"],
+    [tuesday, "PEORIA 08/19-08/28"],
+    [new Date(2026, 7, 19, 12), "PEORIA 08/20-08/28"],
+    [new Date(2026, 7, 20, 12), "PEORIA 08/21-08/28"],
+    [new Date(2026, 7, 21, 12), "PEORIA 08/22-08/28"],
+    [new Date(2026, 7, 22, 12), "PEORIA 08/23-08/28"],
+    [new Date(2026, 7, 23, 12), "PEORIA 08/24-08/28"]
+  ].forEach(([now, expected]) => {
+    assert.equal(template.resolveTemplate(peoria, { now }).value, expected);
+  });
   assert.equal(template.resolveTemplate(peoria, { now: nextMonday }).value, "PEORIA 08/25-09/04");
 });
 
