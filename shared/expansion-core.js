@@ -62,6 +62,38 @@
     };
   }
 
+  function normalizeShortcutCandidate(command) {
+    if (!command || typeof command !== "object") return null;
+    const shortcut = typeof command.shortcut === "string" ? command.shortcut.trim() : "";
+    if (!shortcut || /\s/u.test(shortcut)) return null;
+    return {
+      id: command.id === undefined || command.id === null ? null : String(command.id),
+      shortcut,
+      enabled: command.enabled !== false,
+      caseSensitive: command.caseSensitive !== false
+    };
+  }
+
+  function shortcutsHaveAutoExpandConflict(left, right) {
+    const first = normalizeShortcutCandidate(left);
+    const second = normalizeShortcutCandidate(right);
+    if (!first || !second || !first.enabled || !second.enabled) return false;
+    if (first.id !== null && second.id !== null && first.id === second.id) return false;
+    if (first.shortcut.length === second.shortcut.length) return false;
+
+    const shorter = first.shortcut.length < second.shortcut.length ? first : second;
+    const longer = shorter === first ? second : first;
+    if (!shorter.caseSensitive || !longer.caseSensitive) {
+      return longer.shortcut.toLowerCase().startsWith(shorter.shortcut.toLowerCase());
+    }
+    return longer.shortcut.startsWith(shorter.shortcut);
+  }
+
+  function findShortcutConflicts(command, commands) {
+    if (!Array.isArray(commands)) return [];
+    return commands.filter((candidate) => shortcutsHaveAutoExpandConflict(command, candidate));
+  }
+
   function findMatchingCommand(text, commands) {
     if (typeof text !== "string" || !Array.isArray(commands)) return null;
 
@@ -119,12 +151,14 @@
     delimiterFor,
     expandText,
     findMatchingCommand,
+    findShortcutConflicts,
     isAutoEnabled,
     isAutoExpansionInput,
     isKeyEnabled,
     isSiteExcluded,
     isSupportedKey,
     resolveCommandExpansion,
+    shortcutsHaveAutoExpandConflict,
     triggerHint
   };
 

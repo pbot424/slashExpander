@@ -1,7 +1,15 @@
 (function initializeTextExpansion() {
   "use strict";
 
-  if (globalThis.__expanderContentLoaded) return;
+  if (typeof globalThis.__expanderContentCleanup === "function") {
+    try {
+      globalThis.__expanderContentCleanup();
+    } catch {
+      // A prior extension context can be invalid after an update. The new listener still takes precedence.
+    }
+  }
+
+  const eventController = new AbortController();
   globalThis.__expanderContentLoaded = true;
 
   const TEXT_INPUT_TYPES = new Set(["text", "search", "email", "url", "tel"]);
@@ -146,11 +154,25 @@
       : expandContentEditable(target, command, key);
   }
 
-  function recordUsage(command) {
-    chrome.runtime.sendMessage({ type: "record-command-usage", commandId: command.id }).catch(() => {});
+  async function recordUsage(command) {
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: "record-command-usage",
+          commandId: command.id
+        });
+        if (response?.ok) return;
+        lastError = new Error(response?.error || "The background service did not confirm the usage update.");
+      } catch (error) {
+        lastError = error;
+      }
+      if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    console.warn("/Expander could not record command usage.", lastError);
   }
 
-  document.addEventListener("keydown", (event) => {
+  function handleKeyDown(event) {
     if (event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
     if (!SlashExpansion.isSupportedKey(event.key) || !SlashExpansion.isKeyEnabled(event.key, settings)) return;
     if (SlashExpansion.isSiteExcluded(location, settings)) return;
@@ -171,9 +193,9 @@
     } else {
       console.debug("/Expander found a shortcut but could not replace it in this editor.");
     }
-  }, true);
+  }
 
-  document.addEventListener("input", (event) => {
+  function handleInput(event) {
     if (!event.isTrusted || event.isComposing || !SlashExpansion.isAutoEnabled(settings)) return;
     if (!SlashExpansion.isAutoExpansionInput(event.inputType) || SlashExpansion.isSiteExcluded(location, settings)) return;
     const target = getEditableTarget(event);
@@ -183,11 +205,28 @@
     const command = SlashExpansion.findMatchingCommand(beforeText, commands);
     if (!command) return;
     if (expandTarget(target, command, "Auto")) recordUsage(command);
-  }, true);
+  }
 
-  chrome.storage.onChanged.addListener((changes, areaName) => {
+  function handleStorageChange(changes, areaName) {
     if (SlashStore.isStateChange(changes, areaName)) refreshState();
-  });
+  }
+
+  function cleanup() {
+    eventController.abort();
+    try {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    } catch {
+      // The extension context may already be invalid while a newer version is taking over.
+    }
+    if (globalThis.__expanderContentCleanup === cleanup) {
+      delete globalThis.__expanderContentCleanup;
+    }
+  }
+
+  globalThis.__expanderContentCleanup = cleanup;
+  window.addEventListener("keydown", handleKeyDown, { capture: true, signal: eventController.signal });
+  window.addEventListener("input", handleInput, { capture: true, signal: eventController.signal });
+  chrome.storage.onChanged.addListener(handleStorageChange);
 
   refreshState();
 })();

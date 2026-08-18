@@ -23,7 +23,7 @@ body {
   height: 40px;
   padding: 0;
   place-items: center;
-  border: 1px solid var(--line-strong);
+  border: 0;
   border-radius: 8px;
   background: #fff;
   font-size: 13px;
@@ -335,7 +335,7 @@ body {
 .options-command-row {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(92px, 0.42fr) minmax(0, 1fr) 18px;
+  grid-template-columns: minmax(92px, 0.42fr) minmax(0, 1fr) 20px 18px;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -409,6 +409,23 @@ body {
   width: 17px;
   height: 17px;
   color: var(--muted);
+}
+
+.shortcut-conflict-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #a45100;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1;
+  place-items: center;
+}
+
+.command-conflict-icon.is-empty {
+  visibility: hidden;
 }
 
 .library-empty {
@@ -496,6 +513,10 @@ body {
   border-top: 1px solid var(--line);
 }
 
+#dashboard-most-used-section:not([hidden]) + #dashboard-conflicts-section:not([hidden]) {
+  border-top: 0;
+}
+
 .dashboard-insight-heading {
   display: flex;
   align-items: center;
@@ -519,6 +540,10 @@ body {
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
+}
+
+#dashboard-conflicts-count {
+  color: #b77900;
 }
 
 .dashboard-insight-help {
@@ -757,6 +782,47 @@ body {
   margin: 8px 0 0;
   color: var(--faint);
   font-size: 12px;
+}
+
+.dashboard-inline-action {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #087a49;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dashboard-inline-action:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dashboard-inline-action:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--coral);
+  outline-offset: 3px;
+}
+
+.shortcut-conflict-warning {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #e3b341;
+  border-radius: 7px;
+  background: #fff7db;
+  color: #724600;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.shortcut-conflict-warning[hidden] {
+  display: none;
 }
 
 .command-case-setting {
@@ -1006,6 +1072,96 @@ body {
 
 .settings-dialog::backdrop {
   background: rgba(16, 17, 20, 0.34);
+}
+
+.usage-dialog {
+  width: min(92vw, 580px);
+  overflow: hidden;
+}
+
+.usage-dialog-body {
+  padding: 10px 24px 24px;
+}
+
+.usage-dialog-list {
+  max-height: min(62vh, 520px);
+  margin-top: 0;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.auto-expand-conflict-dialog {
+  width: min(92vw, 620px);
+}
+
+.auto-expand-conflict-body {
+  padding: 22px 24px 24px;
+}
+
+.auto-expand-conflict-body > p:first-child {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.auto-expand-conflict-list {
+  max-height: min(42vh, 340px);
+  overflow-y: auto;
+}
+
+.auto-expand-conflict-group,
+.dashboard-conflict-group {
+  overflow: hidden;
+  border: 1px solid #e3b341;
+  border-radius: 9px;
+  background: #fffaf0;
+}
+
+.auto-expand-conflict-group + .auto-expand-conflict-group,
+.dashboard-conflict-group + .dashboard-conflict-group {
+  margin-top: 10px;
+}
+
+.auto-expand-conflict-commands {
+  display: grid;
+}
+
+.auto-expand-conflict-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 12px;
+}
+
+.auto-expand-conflict-row + .auto-expand-conflict-row {
+  border-top: 1px solid #eedaa2;
+}
+
+.auto-expand-conflict-row code {
+  overflow: hidden;
+  color: #087a49;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auto-expand-conflict-row span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.dashboard-conflict-group .dashboard-command-ranking {
+  margin-top: 0;
+}
+
+.dashboard-conflict-group .dashboard-ranking-row {
+  padding-right: 12px;
+  padding-left: 12px;
 }
 
 .formula-dialog {
@@ -1629,4 +1785,18 @@ body {
   .settings-dialog-body {
     padding: 18px;
   }
+
+  .usage-dialog-body {
+    padding: 8px 18px 18px;
+  }
+
+  .auto-expand-conflict-body {
+    padding: 18px;
+  }
+
+  .auto-expand-conflict-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
 }

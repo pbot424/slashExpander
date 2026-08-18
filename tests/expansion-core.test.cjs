@@ -26,6 +26,26 @@ test("prefers the longest matching shortcut", () => {
   assert.equal(core.findMatchingCommand("/go/go", overlapping)?.id, "two");
 });
 
+test("finds auto-expand conflicts when one enabled shortcut prefixes another", () => {
+  const overlapping = [
+    { id: "short", shortcut: "/co", enabled: true, caseSensitive: false },
+    { id: "long", shortcut: "/cour", enabled: true, caseSensitive: false },
+    { id: "disabled", shortcut: "/course", enabled: false, caseSensitive: false },
+    { id: "separate", shortcut: "/other", enabled: true, caseSensitive: false }
+  ];
+
+  assert.deepEqual(core.findShortcutConflicts(overlapping[0], overlapping).map((command) => command.id), ["long"]);
+  assert.deepEqual(core.findShortcutConflicts(overlapping[1], overlapping).map((command) => command.id), ["short"]);
+  assert.equal(core.shortcutsHaveAutoExpandConflict(
+    { shortcut: "/Co", caseSensitive: true },
+    { shortcut: "/cour", caseSensitive: true }
+  ), false);
+  assert.equal(core.shortcutsHaveAutoExpandConflict(
+    { shortcut: "/Co", caseSensitive: true },
+    { shortcut: "/cour", caseSensitive: false }
+  ), true);
+});
+
 test("uses per-command case sensitivity and defaults it on", () => {
   const caseCommands = [
     { id: "strict", shortcut: "/Case", expansion: "Strict" },

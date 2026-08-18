@@ -39,9 +39,13 @@ const screenshots = {
   formula: join(tmpdir(), "expander-options-formula-builder.png"),
   formulaMobile: join(tmpdir(), "expander-options-formula-builder-mobile.png"),
   duplicate: join(tmpdir(), "expander-options-duplicate-command.png"),
+  conflict: join(tmpdir(), "expander-options-shortcut-conflict.png"),
   commands: join(tmpdir(), "expander-options-commands.png"),
   settings: join(tmpdir(), "expander-options-settings.png"),
   settingsMobile: join(tmpdir(), "expander-options-settings-mobile.png"),
+  usage: join(tmpdir(), "expander-options-command-usage.png"),
+  autoExpandConflict: join(tmpdir(), "expander-options-auto-expand-conflict.png"),
+  dashboardConflicts: join(tmpdir(), "expander-options-dashboard-conflicts.png"),
   mobile: join(tmpdir(), "expander-options-mobile-dashboard.png"),
   mobileEditor: join(tmpdir(), "expander-options-mobile-editor.png")
 };
@@ -59,7 +63,9 @@ const server = http.createServer((_request, response) => {
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const address = server.address();
 const testHostname = "expander.example.com";
+const childTestHostname = `x.${testHostname}`;
 const testUrl = `http://${testHostname}:${address.port}/`;
+const childTestUrl = `http://${childTestHostname}:${address.port}/`;
 
 async function waitForValue(read, expected, timeout = 5000) {
   const deadline = Date.now() + timeout;
@@ -95,7 +101,7 @@ try {
     args: [
       `--disable-extensions-except=${root}`,
       `--load-extension=${root}`,
-      `--host-resolver-rules=MAP ${testHostname} 127.0.0.1`
+      `--host-resolver-rules=MAP ${testHostname} 127.0.0.1, MAP ${childTestHostname} 127.0.0.1`
     ]
   });
 
@@ -112,6 +118,11 @@ try {
   await page.goto(testUrl);
   assert.equal(await page.title(), "");
   await page.locator("#plain").waitFor({ state: "visible" });
+
+  const childPage = monitor(await context.newPage(), "child website");
+  await childPage.goto(childTestUrl);
+  assert.equal(await childPage.title(), "");
+  await childPage.locator("#plain").waitFor({ state: "visible" });
 
   const options = monitor(await context.newPage(), "options");
   await options.setViewportSize({ width: 1280, height: 800 });
@@ -176,7 +187,9 @@ try {
   assert.equal(await options.locator("#command-form #expand-space").count(), 0);
   assert.equal((await options.getByRole("button", { name: "Settings" }).textContent()).trim(), "");
   assert.equal(await options.getByRole("button", { name: "Settings" }).getAttribute("title"), "Settings");
+  assert.equal(await options.getByRole("button", { name: "Settings" }).evaluate((element) => getComputedStyle(element).borderTopWidth), "0px");
   assert.equal(await options.locator("#settings-dialog").evaluate((dialog) => dialog.open), false);
+  assert.equal(await options.locator("#usage-dialog").evaluate((dialog) => dialog.open), false);
   assert.equal(await options.locator("#manager-test").getAttribute("placeholder"), "Try your command here");
   assert.equal(await options.locator("#manager-test").getAttribute("aria-describedby"), "manager-test-hint");
   assert.equal(await options.locator("#manager-test-hint").textContent(), "Press Space, Tab or Enter to expand.");
@@ -232,7 +245,7 @@ try {
   const initialState = await getSyncedState(options);
   assert.deepEqual(initialState.commands, []);
   assert.deepEqual(initialState.sections, []);
-  assert.equal(initialState.stateVersion, 4);
+  assert.equal(initialState.stateVersion, 6);
   const creationControls = await options.evaluate(() => {
     const heading = document.querySelector(".library-heading");
     const command = document.querySelector("#create-command");
@@ -623,6 +636,7 @@ try {
   await options.locator("#expansion").fill(testExpansionBeforeDrag);
   assert.equal(await options.getByRole("button", { name: "Save changes" }).isDisabled(), true);
 
+  const auroraId = storedAfterCreate.commands.find((command) => command.shortcut === "/aurora").id;
   const sigId = storedAfterCreate.commands.find((command) => command.shortcut === "/sig").id;
   await options.evaluate(async ({ commandId, trackedSince }) => {
     const stored = await chrome.storage.local.get(["usageStats"]);
@@ -704,6 +718,21 @@ try {
   await frame.locator("#framed").press("Space");
   assert.equal(await frame.locator("#framed").inputValue(), "Hi Aurora team — here’s the update for today. ");
 
+  const usageBeforeChildHost = await options.evaluate(
+    (commandId) => chrome.storage.local.get(["usageStats"]).then((stored) => stored.usageStats?.[commandId]?.count || 0),
+    auroraId
+  );
+  await childPage.locator("#plain").fill("/aurora");
+  await childPage.locator("#plain").press("Space");
+  assert.equal(await childPage.locator("#plain").inputValue(), "Hi Aurora team — here’s the update for today. ");
+  await waitForValue(
+    () => options.evaluate(
+      (commandId) => chrome.storage.local.get(["usageStats"]).then((stored) => stored.usageStats?.[commandId]?.count),
+      auroraId
+    ),
+    usageBeforeChildHost + 1
+  );
+
   await page.locator("#plain").fill("hello/aurora");
   await page.locator("#plain").press("Space");
   assert.equal(await page.locator("#plain").inputValue(), "hello/aurora ");
@@ -781,11 +810,10 @@ try {
   await popup.locator("#quick-test").pressSequentially("/sig");
   await waitForValue(() => popup.locator("#quick-test").inputValue(), "Best,\nHung");
 
-  const auroraId = storedAfterCreate.commands.find((command) => command.shortcut === "/aurora").id;
   const testCommandId = storedAfterCreate.commands.find((command) => command.shortcut === ";test").id;
   await waitForValue(
     () => options.evaluate((commandId) => chrome.storage.local.get(["usageStats"]).then((stored) => stored.usageStats?.[commandId]?.count), auroraId),
-    4
+    5
   );
   await waitForValue(
     () => options.evaluate((commandId) => chrome.storage.local.get(["usageStats"]).then((stored) => stored.usageStats?.[commandId]?.count), sigId),
@@ -831,6 +859,17 @@ try {
   assert.equal(await options.locator("#dashboard-most-used-section").isVisible(), true);
   assert.equal(await options.locator("#dashboard-unused-section").isHidden(), true);
   assert.equal(await options.locator("#dashboard-most-used .dashboard-ranking-row").count(), 3);
+  const viewUsage = options.getByRole("button", { name: "View Usage" });
+  assert.equal(await viewUsage.locator("..").getByRole("heading", { name: "Most used commands" }).count(), 1);
+  assert.equal(await viewUsage.getAttribute("aria-haspopup"), "dialog");
+  await viewUsage.click();
+  assert.equal(await options.locator("#usage-dialog").evaluate((dialog) => dialog.open), true);
+  assert.equal(await options.locator("#usage-dialog").getByRole("heading", { name: "Command usage" }).count(), 1);
+  assert.equal(await options.locator("#usage-dialog-list .dashboard-ranking-row").count(), 3);
+  assert.equal(await options.locator("#dashboard-most-used .dashboard-ranking-row").count(), 3);
+  await options.screenshot({ path: screenshots.usage });
+  await options.getByRole("button", { name: "Close command usage" }).click();
+  assert.equal(await options.locator("#usage-dialog").evaluate((dialog) => dialog.open), false);
   const mostUsedFirst = options.locator("#dashboard-most-used .dashboard-ranking-row").first();
   assert.equal(await mostUsedFirst.evaluate((element) => element.tagName), "DIV");
   assert.equal(await mostUsedFirst.getAttribute("aria-label"), null);
@@ -919,6 +958,92 @@ try {
   assert.equal(await manager.getByRole("button", { name: "Saved" }).isDisabled(), true);
   assert.doesNotMatch(await manager.locator("#form-message").textContent(), /quota|Resource::/iu);
 
+  await manager.locator("#create-command").click();
+  await manager.locator("#shortcut-name").fill("co");
+  await manager.locator("#expansion").fill("Colorado");
+  assert.equal(await manager.locator("#shortcut-conflict-warning").isHidden(), true);
+  await manager.getByRole("button", { name: "Save changes" }).click();
+  await waitForValue(() => manager.locator("#library-count").textContent(), "14");
+
+  await manager.locator("#create-command").click();
+  await manager.locator("#shortcut-name").fill("cour");
+  await manager.locator("#expansion").fill("Courier");
+  assert.equal(await manager.locator("#shortcut-conflict-warning").isHidden(), true);
+  await manager.getByRole("button", { name: "Save changes" }).click();
+  await waitForValue(() => manager.locator("#library-count").textContent(), "15");
+  await manager.getByRole("button", { name: "Settings" }).click();
+  await manager.locator("#expand-auto").click();
+  assert.equal(await manager.locator("#auto-expand-conflict-dialog").evaluate((dialog) => dialog.open), true);
+  assert.deepEqual(
+    await manager.locator("#auto-expand-conflict-list code").allTextContents(),
+    ["/co", "/cour"]
+  );
+  assert.equal(
+    await manager.evaluate(() => chrome.storage.sync.get(["settings"]).then((stored) => stored.settings.autoExpand)),
+    false
+  );
+  await manager.screenshot({ path: screenshots.autoExpandConflict });
+  await manager.getByRole("button", { name: "Keep current settings" }).click();
+  assert.equal(await manager.locator("#auto-expand-conflict-dialog").evaluate((dialog) => dialog.open), false);
+  assert.equal(await manager.locator("#expand-auto").isChecked(), false);
+  await manager.locator("#expand-auto").click();
+  assert.equal(await manager.locator("#auto-expand-conflict-dialog").evaluate((dialog) => dialog.open), true);
+  await manager.getByRole("button", { name: "Enable Auto-Expand" }).click();
+  await waitForValue(
+    () => manager.evaluate(() => chrome.storage.sync.get(["settings"]).then((stored) => stored.settings.autoExpand)),
+    true
+  );
+  assert.equal(await manager.locator("#auto-expand-conflict-dialog").evaluate((dialog) => dialog.open), false);
+  await manager.getByRole("button", { name: "Close settings" }).click();
+  assert.equal(await manager.locator("#shortcut-conflict-warning").isVisible(), true);
+  assert.equal(
+    await manager.locator("#shortcut-conflict-text").textContent(),
+    "Auto-Expand warning: /co may expand before /cour is fully typed."
+  );
+  assert.equal(await manager.getByRole("button", { name: "Saved" }).isDisabled(), true);
+
+  const conflictingShortcuts = await manager.locator(".options-command-row").evaluateAll((rows) => rows
+    .filter((row) => !row.querySelector(".command-conflict-icon")?.classList.contains("is-empty"))
+    .map((row) => row.querySelector(".options-command-shortcut")?.textContent)
+    .filter(Boolean)
+    .sort());
+  assert.deepEqual(conflictingShortcuts, ["/co", "/cour"]);
+  await manager.locator(".options-command-shortcut").evaluateAll((shortcuts) => {
+    shortcuts.find((shortcut) => shortcut.textContent === "/co")?.closest("button")?.click();
+  });
+  assert.equal(await manager.locator("#shortcut-conflict-warning").isVisible(), true);
+  await manager.locator("#shortcut-name").fill("coffee");
+  assert.equal(await manager.locator("#shortcut-conflict-warning").isHidden(), true);
+  await manager.locator("#shortcut-name").fill("co");
+  assert.equal(await manager.locator("#shortcut-conflict-warning").isVisible(), true);
+  await manager.screenshot({ path: screenshots.conflict });
+  await manager.getByRole("button", { name: "Close command editor" }).click();
+  await manager.locator("#manager-dashboard").waitFor({ state: "visible" });
+  assert.equal(await manager.locator("#dashboard-conflicts-section").isVisible(), true);
+  assert.equal(await manager.locator("#dashboard-conflicts-count").textContent(), "2");
+  assert.equal(await manager.locator("#dashboard-conflicts .dashboard-conflict-group").count(), 1);
+  assert.equal(await manager.locator("#dashboard-conflicts .conflict-group-heading").count(), 0);
+  assert.deepEqual(
+    await manager.locator("#dashboard-conflicts code").allTextContents(),
+    ["/co", "/cour"]
+  );
+  assert.equal(await manager.locator("#manager-dashboard").evaluate((dashboard) => {
+    const mostUsed = dashboard.querySelector("#dashboard-most-used-section");
+    const conflicts = dashboard.querySelector("#dashboard-conflicts-section");
+    return mostUsed.compareDocumentPosition(conflicts) === Node.DOCUMENT_POSITION_FOLLOWING;
+  }), true);
+  await manager.screenshot({ path: screenshots.dashboardConflicts });
+  await manager.getByRole("button", { name: "Settings" }).click();
+  await manager.locator("#expand-auto").uncheck();
+  await waitForValue(
+    () => manager.evaluate(() => chrome.storage.sync.get(["settings"]).then((stored) => stored.settings.autoExpand)),
+    false
+  );
+  await manager.getByRole("button", { name: "Close settings" }).click();
+  assert.equal(await manager.locator("#dashboard-conflicts-section").isHidden(), true);
+  const visibleConflictIcons = await manager.locator(".command-conflict-icon:not(.is-empty)").count();
+  assert.equal(visibleConflictIcons, 0);
+
   assert.deepEqual(consoleProblems, []);
   console.log(JSON.stringify({
     extensionId,
@@ -927,7 +1052,8 @@ try {
       "starter migration unit coverage",
       "existing-tab activation",
       "future page content scripts",
-    "embedded frames",
+      "embedded frames",
+      "base and child-host usage tracking",
       "dynamic date formulas",
       "visual date formula builder",
       "formula validation",
@@ -944,11 +1070,15 @@ try {
       "preset prefix selector",
       "independent trigger checkboxes",
       "mutually exclusive auto-expand",
+      "auto-expand shortcut conflict warnings",
+      "conflict review before enabling auto-expand",
+      "auto-expand-only dashboard conflict tracking",
       "global settings dialog",
       "default middle-rail dashboard",
       "dashboard-to-editor transitions",
       "persisted command usage tracking",
       "top-three most-used ranking",
+      "modal full command usage view",
       "30-day unused-command notifications",
       "opt-in command sections",
       "new commands default to General",

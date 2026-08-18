@@ -8,13 +8,25 @@
     dashboard: document.querySelector("#manager-dashboard"),
     dashboardMostUsedSection: document.querySelector("#dashboard-most-used-section"),
     dashboardMostUsed: document.querySelector("#dashboard-most-used"),
+    dashboardViewUsage: document.querySelector("#dashboard-view-usage"),
+    dashboardConflictsSection: document.querySelector("#dashboard-conflicts-section"),
+    dashboardConflicts: document.querySelector("#dashboard-conflicts"),
+    dashboardConflictsCount: document.querySelector("#dashboard-conflicts-count"),
     dashboardUnusedSection: document.querySelector("#dashboard-unused-section"),
     dashboardUnused: document.querySelector("#dashboard-unused"),
     dashboardUnusedCount: document.querySelector("#dashboard-unused-count"),
+    usageDialog: document.querySelector("#usage-dialog"),
+    usageDialogList: document.querySelector("#usage-dialog-list"),
+    autoExpandConflictDialog: document.querySelector("#auto-expand-conflict-dialog"),
+    autoExpandConflictList: document.querySelector("#auto-expand-conflict-list"),
+    autoExpandConflictMessage: document.querySelector("#auto-expand-conflict-message"),
+    confirmAutoExpand: document.querySelector("#confirm-auto-expand"),
     form: document.querySelector("#command-form"),
     title: document.querySelector("#editor-title"),
     prefix: document.querySelector("#shortcut-prefix"),
     name: document.querySelector("#shortcut-name"),
+    shortcutConflictWarning: document.querySelector("#shortcut-conflict-warning"),
+    shortcutConflictText: document.querySelector("#shortcut-conflict-text"),
     caseSensitive: document.querySelector("#case-sensitive"),
     section: document.querySelector("#command-section"),
     expansion: document.querySelector("#expansion"),
@@ -147,6 +159,103 @@
     return `${elements.prefix.value}${elements.name.value}`.trim();
   }
 
+  function shortcutConflictMessage(command, conflicts) {
+    const issues = conflicts.map((other) => {
+      const shorter = command.shortcut.length < other.shortcut.length ? command : other;
+      const longer = shorter === command ? other : command;
+      return `${shorter.shortcut} may expand before ${longer.shortcut} is fully typed`;
+    });
+    return issues.length ? `Auto-Expand warning: ${[...new Set(issues)].join("; ")}.` : "";
+  }
+
+  function autoExpandConflictPairs() {
+    const pairs = [];
+    state.commands.forEach((command, index) => {
+      state.commands.slice(index + 1).forEach((candidate) => {
+        if (SlashExpansion.shortcutsHaveAutoExpandConflict(command, candidate)) {
+          const shorter = command.shortcut.length < candidate.shortcut.length ? command : candidate;
+          const longer = shorter === command ? candidate : command;
+          pairs.push({ shorter, longer });
+        }
+      });
+    });
+    return pairs;
+  }
+
+  function autoExpandConflictGroups(pairs = autoExpandConflictPairs()) {
+    const commandsById = new Map();
+    const relatedIds = new Map();
+    pairs.forEach(({ shorter, longer }) => {
+      commandsById.set(shorter.id, shorter);
+      commandsById.set(longer.id, longer);
+      if (!relatedIds.has(shorter.id)) relatedIds.set(shorter.id, new Set());
+      if (!relatedIds.has(longer.id)) relatedIds.set(longer.id, new Set());
+      relatedIds.get(shorter.id).add(longer.id);
+      relatedIds.get(longer.id).add(shorter.id);
+    });
+
+    const visited = new Set();
+    const groups = [];
+    commandsById.forEach((_command, commandId) => {
+      if (visited.has(commandId)) return;
+      const pending = [commandId];
+      const group = [];
+      while (pending.length) {
+        const currentId = pending.pop();
+        if (visited.has(currentId)) continue;
+        visited.add(currentId);
+        group.push(commandsById.get(currentId));
+        relatedIds.get(currentId)?.forEach((relatedId) => pending.push(relatedId));
+      }
+      group.sort((left, right) => left.shortcut.length - right.shortcut.length || compareCommandsByName(left, right));
+      groups.push(group);
+    });
+    return groups.sort((left, right) => compareCommandsByName(left[0], right[0]));
+  }
+
+  function renderAutoExpandConflictPrompt(pairs) {
+    elements.autoExpandConflictList.replaceChildren();
+    autoExpandConflictGroups(pairs).forEach((commands) => {
+      const group = document.createElement("section");
+      group.className = "auto-expand-conflict-group";
+      const list = document.createElement("div");
+      list.className = "auto-expand-conflict-commands";
+      commands.forEach((command, commandIndex) => {
+        const row = document.createElement("div");
+        row.className = "auto-expand-conflict-row";
+        const shortcut = document.createElement("code");
+        shortcut.textContent = command.shortcut;
+        const label = document.createElement("span");
+        label.textContent = commandIndex === 0 ? "May expand first" : `Conflicts with ${commands[0].shortcut}`;
+        row.append(shortcut, label);
+        list.append(row);
+      });
+      group.append(list);
+      elements.autoExpandConflictList.append(group);
+    });
+    elements.autoExpandConflictMessage.textContent = "";
+  }
+
+  function currentShortcutConflicts() {
+    if (!state.settings.autoExpand || !elements.name.value.trim()) return [];
+    return SlashExpansion.findShortcutConflicts({
+      id: isNew ? null : selectedId,
+      shortcut: currentShortcut(),
+      enabled: true,
+      caseSensitive: elements.caseSensitive.checked
+    }, state.commands);
+  }
+
+  function updateShortcutConflictWarning() {
+    const command = {
+      shortcut: currentShortcut(),
+      caseSensitive: elements.caseSensitive.checked
+    };
+    const message = shortcutConflictMessage(command, currentShortcutConflicts());
+    elements.shortcutConflictText.textContent = message;
+    elements.shortcutConflictWarning.hidden = !message;
+  }
+
   function commandSignature(command) {
     return JSON.stringify({
       shortcut: String(command?.shortcut || "").trim(),
@@ -202,11 +311,12 @@
     elements.formulaStatus.classList.toggle("is-error", resolved.errors.length > 0);
     if (resolved.errors.length) elements.formulaStatus.textContent = resolved.errors[0].message;
     else elements.formulaStatus.textContent = "";
+    updateShortcutConflictWarning();
   }
 
   function buildSelectedPresetToken() {
     const presets = {
-      "po-range": "{{date:today|addDays:1|format:MM/DD}}-{{date:today|startOfWeek:monday|addDays:11|format:MM/DD}}"
+      "po-range": SlashDefaults.PO_DATE_RANGE_PRESET
     };
     return presets[elements.formulaPreset.value] || presets["po-range"];
   }
@@ -401,6 +511,10 @@
   }
 
   function appendCommandRow(container, command) {
+    const conflicts = state.settings.autoExpand
+      ? SlashExpansion.findShortcutConflicts(command, state.commands)
+      : [];
+    const conflictMessage = shortcutConflictMessage(command, conflicts);
     const row = document.createElement("button");
     row.type = "button";
     row.className = "options-command-row";
@@ -408,6 +522,7 @@
     row.title = "Drag to move this command to another section";
     row.classList.toggle("is-selected", !isDashboard && !isNew && command.id === selectedId);
     row.setAttribute("aria-pressed", String(!isDashboard && !isNew && command.id === selectedId));
+    row.setAttribute("aria-label", conflictMessage ? `Edit ${command.shortcut}. ${conflictMessage}` : `Edit ${command.shortcut}`);
 
     const shortcut = document.createElement("span");
     shortcut.className = "options-command-shortcut";
@@ -417,7 +532,14 @@
     expansion.className = "options-command-preview";
     expansion.textContent = previewText(SlashTemplate.resolveTemplate(command.expansion).value);
 
-    row.append(shortcut, expansion);
+    const conflict = document.createElement("span");
+    conflict.className = "shortcut-conflict-icon command-conflict-icon";
+    conflict.classList.toggle("is-empty", !conflictMessage);
+    conflict.textContent = "!";
+    conflict.title = conflictMessage;
+    conflict.setAttribute("aria-hidden", "true");
+
+    row.append(shortcut, expansion, conflict);
     row.insertAdjacentHTML("beforeend", chevron);
     row.addEventListener("click", () => selectCommand(command.id));
     row.addEventListener("dragstart", (event) => {
@@ -588,15 +710,46 @@
     container.append(row);
   }
 
+  function appendDashboardConflictGroup(container, commands) {
+    const group = document.createElement("section");
+    group.className = "dashboard-conflict-group";
+    const list = document.createElement("div");
+    list.className = "dashboard-command-ranking";
+    commands.forEach((command) => {
+      const related = SlashExpansion.findShortcutConflicts(command, commands)
+        .map((candidate) => candidate.shortcut)
+        .sort()
+        .join(", ");
+      appendDashboardRanking(list, command, `Conflicts with ${related}`, { interactive: true });
+    });
+    group.append(list);
+    container.append(group);
+  }
+
+  function renderUsageDialog() {
+    const now = Date.now();
+    const rankedUsage = state.commands
+      .map((command) => ({
+        command,
+        usage: cleanUsageEntry(usageStats[command.id], now)
+      }))
+      .sort((left, right) => right.usage.count - left.usage.count || left.command.shortcut.localeCompare(right.command.shortcut));
+    elements.usageDialogList.replaceChildren();
+    rankedUsage.forEach(({ command, usage }) => {
+      appendDashboardRanking(elements.usageDialogList, command, `${usage.count} ${usage.count === 1 ? "use" : "uses"}`);
+    });
+  }
+
   function renderDashboardRankings() {
     const now = Date.now();
     const withUsage = state.commands.map((command) => ({
       command,
       usage: cleanUsageEntry(usageStats[command.id], now)
     }));
-    const mostUsed = withUsage
-      .filter(({ usage }) => usage.count > 0)
+    const rankedUsage = withUsage
       .sort((left, right) => right.usage.count - left.usage.count || left.command.shortcut.localeCompare(right.command.shortcut));
+    const mostUsed = rankedUsage.filter(({ usage }) => usage.count > 0);
+    const conflictGroups = state.settings.autoExpand ? autoExpandConflictGroups() : [];
     const unused = withUsage
       .filter(({ usage }) => now - (usage.lastUsedAt || usage.trackedSince) >= UNUSED_THRESHOLD_MS)
       .sort((left, right) => (left.usage.lastUsedAt || left.usage.trackedSince) - (right.usage.lastUsedAt || right.usage.trackedSince));
@@ -608,6 +761,14 @@
         appendDashboardRanking(elements.dashboardMostUsed, command, `${usage.count} ${usage.count === 1 ? "use" : "uses"}`);
       });
     }
+
+    const conflictingCommandCount = conflictGroups.reduce((total, commands) => total + commands.length, 0);
+    elements.dashboardConflictsCount.textContent = String(conflictingCommandCount);
+    elements.dashboardConflicts.replaceChildren();
+    elements.dashboardConflictsSection.hidden = !conflictGroups.length;
+    conflictGroups.forEach((commands) => {
+      appendDashboardConflictGroup(elements.dashboardConflicts, commands);
+    });
 
     elements.dashboardUnusedCount.textContent = String(unused.length);
     elements.dashboardUnused.replaceChildren();
@@ -876,11 +1037,21 @@
   });
 
   elements.search.addEventListener("input", renderList);
+  elements.dashboardViewUsage.addEventListener("click", () => {
+    renderUsageDialog();
+    elements.usageDialog.showModal();
+  });
+  document.querySelector("#close-usage").addEventListener("click", () => elements.usageDialog.close());
+  elements.usageDialog.addEventListener("click", (event) => {
+    if (event.target === elements.usageDialog) elements.usageDialog.close();
+  });
+  elements.usageDialog.addEventListener("close", () => elements.usageDialogList.replaceChildren());
   elements.form.addEventListener("input", markEditorDirty);
   elements.form.addEventListener("change", markEditorDirty);
   elements.prefix.addEventListener("input", updatePreview);
   elements.prefix.addEventListener("change", updatePreview);
   elements.name.addEventListener("input", updatePreview);
+  elements.caseSensitive.addEventListener("change", updateShortcutConflictWarning);
   elements.expansion.addEventListener("input", updatePreview);
   document.querySelector("#open-formula").addEventListener("click", openFormulaBuilder);
   document.querySelector("#close-formula").addEventListener("click", () => elements.formulaDialog.close());
@@ -917,19 +1088,54 @@
     if (event.target === elements.settingsDialog) elements.settingsDialog.close();
   });
 
+  async function saveExpansionSettings(checkbox, messageTarget = elements.settingsMessage) {
+    try {
+      syncTriggerAvailability({ restoreSpace: checkbox === elements.expandAuto });
+      state.settings = settingsFromControls();
+      state = await SlashStore.saveState(state);
+      updateManagerTestHint();
+      await refreshStorageInfo();
+      messageTarget.textContent = "Settings saved.";
+      return true;
+    } catch (error) {
+      messageTarget.textContent = error.message || "Could not save expansion settings.";
+      return false;
+    }
+  }
+
+  function keepCurrentAutoExpandSetting() {
+    elements.autoExpandConflictDialog.close();
+    syncSettingsControls();
+  }
+
   [elements.expandSpace, elements.expandTab, elements.expandEnter, elements.expandAuto].forEach((checkbox) => {
     checkbox.addEventListener("change", async () => {
-      try {
-        syncTriggerAvailability({ restoreSpace: checkbox === elements.expandAuto });
-        state.settings = settingsFromControls();
-        state = await SlashStore.saveState(state);
-        updateManagerTestHint();
-        await refreshStorageInfo();
-        elements.settingsMessage.textContent = "Settings saved.";
-      } catch (error) {
-        elements.settingsMessage.textContent = error.message || "Could not save expansion settings.";
+      if (checkbox === elements.expandAuto && checkbox.checked) {
+        const pairs = autoExpandConflictPairs();
+        if (pairs.length) {
+          checkbox.checked = false;
+          renderAutoExpandConflictPrompt(pairs);
+          elements.autoExpandConflictDialog.showModal();
+          return;
+        }
       }
+      await saveExpansionSettings(checkbox);
     });
+  });
+
+  elements.confirmAutoExpand.addEventListener("click", async () => {
+    elements.confirmAutoExpand.disabled = true;
+    elements.expandAuto.checked = true;
+    const saved = await saveExpansionSettings(elements.expandAuto, elements.autoExpandConflictMessage);
+    elements.confirmAutoExpand.disabled = false;
+    if (saved) elements.autoExpandConflictDialog.close();
+    else syncSettingsControls();
+  });
+  document.querySelector("#close-auto-expand-conflicts").addEventListener("click", keepCurrentAutoExpandSetting);
+  document.querySelector("#cancel-auto-expand").addEventListener("click", keepCurrentAutoExpandSetting);
+  elements.autoExpandConflictDialog.addEventListener("close", () => {
+    elements.autoExpandConflictMessage.textContent = "";
+    syncSettingsControls();
   });
 
   elements.storageMode.addEventListener("change", async () => {
@@ -1188,6 +1394,7 @@
       ? changes.usageStats.newValue
       : {};
     if (isDashboard) renderDashboard();
+    if (elements.usageDialog.open) renderUsageDialog();
   });
 
   (async () => {
