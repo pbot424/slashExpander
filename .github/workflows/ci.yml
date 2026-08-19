@@ -39,8 +39,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install extension-capable Chromium
-        run: npx playwright-core install --with-deps chromium
+      - name: Install extension-capable Chrome
+        run: npx playwright-core install --no-shell chromium
 
       - name: Run unit, manifest, and browser tests
         run: npm run verify
