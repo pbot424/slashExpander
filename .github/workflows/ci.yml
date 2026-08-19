@@ -44,3 +44,16 @@ jobs:
 
       - name: Run unit, manifest, and browser tests
         run: npm run verify
+
+  required:
+    name: Test extension
+    needs: test
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Confirm platform matrix
+        shell: bash
+        env:
+          MATRIX_RESULT: ${{ needs.test.result }}
+        run: test "$MATRIX_RESULT" = "success"
