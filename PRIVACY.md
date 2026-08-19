@@ -1,6 +1,6 @@
 # Privacy Policy for /Expander
 
-Effective date: August 17, 2026
+Effective date: August 19, 2026
 
 /Expander is a Chrome extension created by presbot that replaces user-created shortcuts with saved text in editable fields. This policy explains what information the extension handles, how it is used, where it is stored, and with whom it is shared.
 
@@ -25,6 +25,10 @@ To recognize a saved shortcut, /Expander processes keyboard and input events in 
 
 Raw keystrokes and website field contents are not logged, retained as a browsing record, or transmitted to the developer or a developer-operated service. Processing occurs in the browser for the user-facing text-expansion feature.
 
+Fill-in values entered while completing a command are held only long enough to produce that expansion. They are not added to the command, retained as usage history, or transmitted. The inline command picker searches the user's saved command library and does not inspect surrounding page content to generate recommendations.
+
+When the user selects **Save selection as /Expander command** from Chrome's context menu, the selected text is stored temporarily in `chrome.storage.session` while the command editor opens. The temporary draft is removed when the editor reads it. It becomes part of the saved command library only if the user chooses to save the command.
+
 ### Command usage information
 
 /Expander stores an aggregate use count and timestamps for each command. This information powers the **Most used commands** and **Still use these?** sections in the command manager. It does not contain a browsing history, page URL, or copy of the surrounding website content.
@@ -39,15 +43,16 @@ By default, commands, expansion text, categories, paused-site domains, and expan
 
 Users can select **This device only** in Settings. In that mode, the command library and settings are stored with `chrome.storage.local` in the current Chrome profile instead of being synchronized by /Expander. Switching modes copies the active library to the selected storage area; the previous synced copy is retained as a fallback unless the user clears it through Chrome.
 
-Command usage information, the selected storage mode, and interface preferences are stored with `chrome.storage.local` in the user's Chrome profile and are not synchronized by /Expander.
+Command usage information, the selected storage mode, and interface preferences are stored with `chrome.storage.local` in the user's Chrome profile and are not synchronized by /Expander. Usage information is included only when the user explicitly exports a backup; the storage-mode choice and interface preferences are not exported.
 
-Users may also choose to export their command library to a file or import a library from a file. These actions occur only when initiated by the user.
+Users may also choose to export commands, categories, settings, and command usage information to a backup file or import that data from a file. The selected storage mode and interface preferences are not included. These actions occur only when initiated by the user.
 
 ## Permissions
 
 /Expander uses the following Chrome permissions:
 
 - **Storage:** Saves the user's commands, categories, settings, command usage information, and interface preferences.
+- **Context menus:** Adds a user-initiated action for starting a new command from text the user has selected on a page.
 - **Scripting:** Activates the extension's packaged scripts in eligible tabs that were already open when the extension was installed, started, or manually activated.
 - **Host access:** Allows shortcut expansion in editable fields on websites the user visits. /Expander does not run on Chrome-protected pages such as `chrome://` pages or the Chrome Web Store.
 
@@ -59,7 +64,7 @@ Users may also choose to export their command library to a file or import a libr
 
 ## Data retention and user control
 
-Users can edit or delete saved commands from the command manager and can export a backup of their command library. Users can also clear extension data, disable Chrome Sync, or uninstall /Expander through Chrome. Locally stored data is controlled by the user's Chrome profile; synchronized data remains subject to the user's Chrome Sync settings and Google's retention practices.
+Users can edit or delete saved commands from the command manager and can export a backup containing their command library, settings, and usage history. Users can also clear extension data, disable Chrome Sync, or uninstall /Expander through Chrome. Locally stored data is controlled by the user's Chrome profile; synchronized data remains subject to the user's Chrome Sync settings and Google's retention practices.
 
 ## Remote code and external services
 

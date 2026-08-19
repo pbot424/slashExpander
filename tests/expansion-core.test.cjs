@@ -64,6 +64,7 @@ test("expands at the caret and preserves surrounding text", () => {
     value: "Before Hello Aurora  after",
     caret: 20,
     insertion: "Hello Aurora ",
+    cursorOffset: 13,
     start: 7,
     end: 14
   });
@@ -76,6 +77,23 @@ test("resolves date formulas at expansion time", () => {
   };
   const result = core.expandText({ text: "/peoria", caret: 7, command, key: "Tab", now: new Date(2026, 7, 17, 9) });
   assert.equal(result.insertion, "PEORIA 08/18-08/28");
+});
+
+test("resolves fill-in values and places the caret at the cursor token", () => {
+  const command = {
+    shortcut: "/reply",
+    expansion: "Hello {{field:Name|there}},{{cursor}} welcome."
+  };
+  const result = core.expandText({
+    text: "/reply",
+    caret: 6,
+    command,
+    key: " ",
+    multiline: true,
+    values: { Name: "Aurora" }
+  });
+  assert.equal(result.insertion, "Hello Aurora, welcome. ");
+  assert.equal(result.caret, "Hello Aurora,".length);
 });
 
 test("uses newline only for multiline Enter expansion", () => {

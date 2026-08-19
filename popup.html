@@ -21,6 +21,15 @@
         <p id="test-hint"></p>
       </section>
 
+      <section id="page-status" class="page-status" aria-live="polite">
+        <span id="page-status-dot" class="page-status-dot" aria-hidden="true"></span>
+        <div>
+          <strong id="page-status-title">Checking this page…</strong>
+          <p id="page-status-detail"></p>
+        </div>
+        <button id="reactivate-page" type="button" hidden>Reactivate</button>
+      </section>
+
       <button id="site-toggle" class="site-toggle" type="button" aria-pressed="false" hidden></button>
 
       <div class="popup-actions">
@@ -28,7 +37,25 @@
         <button id="manage-commands" class="secondary-button" type="button">Manage</button>
       </div>
 
+      <footer class="creator-footer">
+        <p>Created by <a href="https://presbot.dev" target="_blank" rel="noopener noreferrer">presbot</a></p>
+      </footer>
     </main>
+
+    <dialog id="fill-in-dialog" class="fill-in-dialog" aria-labelledby="fill-in-title">
+      <div class="fill-in-header">
+        <div><h2 id="fill-in-title">Complete command</h2><p id="fill-in-subtitle"></p></div>
+        <button id="close-fill-in" type="button" aria-label="Cancel command expansion">×</button>
+      </div>
+      <form id="fill-in-form" novalidate>
+        <div id="fill-in-fields" class="fill-in-fields"></div>
+        <div class="fill-in-actions">
+          <button class="primary-button" type="submit">Insert command</button>
+          <button id="cancel-fill-in" class="secondary-button" type="button">Cancel</button>
+        </div>
+        <p id="fill-in-message" class="fill-in-message" role="status" aria-live="polite"></p>
+      </form>
+    </dialog>
 
     <script src="shared/defaults.js"></script>
     <script src="shared/template-engine.js"></script>
