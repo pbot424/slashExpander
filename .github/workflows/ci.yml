@@ -15,8 +15,16 @@ concurrency:
 
 jobs:
   test:
-    name: Test extension
-    runs-on: windows-latest
+    name: Test extension (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+          - ubuntu-latest
 
     steps:
       - name: Check out repository
@@ -32,7 +40,7 @@ jobs:
         run: npm ci
 
       - name: Install extension-capable Chromium
-        run: npx playwright-core install chromium
+        run: npx playwright-core install --with-deps chromium
 
       - name: Run unit, manifest, and browser tests
         run: npm run verify

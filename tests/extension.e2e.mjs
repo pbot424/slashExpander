@@ -9,6 +9,7 @@ import { chromium } from "playwright-core";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const sourceManifest = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
+const playwrightChromium = chromium.executablePath();
 const playwrightRoot = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "ms-playwright") : "";
 const installedChromium = existsSync(playwrightRoot)
   ? readdirSync(playwrightRoot)
@@ -19,6 +20,7 @@ const installedChromium = existsSync(playwrightRoot)
 const chromiumCandidates = [
   process.env.EXPANDER_CHROMIUM_PATH,
   process.env.SLASH_CHROMIUM_PATH,
+  playwrightChromium,
   ...installedChromium,
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
@@ -1324,6 +1326,11 @@ try {
   assert.deepEqual(consoleProblems, []);
   console.log(JSON.stringify({
     extensionId,
+    environment: {
+      platform: process.platform,
+      architecture: process.arch,
+      chromiumPath
+    },
     verified: [
       "empty first-run state",
       "starter migration unit coverage",
