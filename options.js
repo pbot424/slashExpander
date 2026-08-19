@@ -141,6 +141,7 @@
   let savedCommandSignature = null;
   let showSavedState = false;
   let pendingImport = null;
+  let refreshChain = Promise.resolve();
   const collapsedSections = new Set();
   const selectedCommandIds = new Set();
   const UNUSED_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
@@ -1329,7 +1330,7 @@
     announce(`Duplicating ${source.shortcut}. Save when the copy is ready.`);
   }
 
-  async function refresh() {
+  async function performRefresh() {
     const refreshContext = { isDashboard, isNew, selectedId };
     const draft = !isDashboard ? {
       shortcut: currentShortcut() || "/",
@@ -1371,6 +1372,12 @@
       }
     }
     else openDashboard();
+  }
+
+  function refresh() {
+    const nextRefresh = refreshChain.catch(() => {}).then(performRefresh);
+    refreshChain = nextRefresh;
+    return nextRefresh;
   }
 
   function openBulkMoveDialog() {
