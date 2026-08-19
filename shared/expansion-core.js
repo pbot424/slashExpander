@@ -127,7 +127,14 @@
     return templateEngine ? templateEngine.resolveTemplate(expansion, options).value : expansion;
   }
 
-  function expandText({ text, caret, command, key, multiline = false, now }) {
+  function resolveCommandTemplate(command, options = {}) {
+    const expansion = typeof command?.expansion === "string" ? command.expansion : "";
+    return templateEngine
+      ? templateEngine.resolveTemplate(expansion, options)
+      : { value: expansion, errors: [], fields: [], cursorOffset: null };
+  }
+
+  function expandText({ text, caret, command, key, multiline = false, now, values }) {
     if (typeof text !== "string" || !command) return null;
     const safeCaret = Number.isInteger(caret) ? caret : text.length;
     const start = safeCaret - command.shortcut.length;
@@ -137,11 +144,14 @@
       ? typedShortcut.toLowerCase() === command.shortcut.toLowerCase()
       : typedShortcut === command.shortcut;
     if (!matches) return null;
-    const insertion = resolveCommandExpansion(command, { now }) + delimiterFor(key, multiline);
+    const resolved = resolveCommandTemplate(command, { now, values });
+    const insertion = resolved.value + delimiterFor(key, multiline);
+    const cursorOffset = Number.isInteger(resolved.cursorOffset) ? resolved.cursorOffset : insertion.length;
     return {
       value: text.slice(0, start) + insertion + text.slice(safeCaret),
-      caret: start + insertion.length,
+      caret: start + cursorOffset,
       insertion,
+      cursorOffset,
       start,
       end: safeCaret
     };
@@ -158,6 +168,7 @@
     isSiteExcluded,
     isSupportedKey,
     resolveCommandExpansion,
+    resolveCommandTemplate,
     shortcutsHaveAutoExpandConflict,
     triggerHint
   };

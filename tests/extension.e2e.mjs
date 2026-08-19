@@ -38,6 +38,10 @@ const screenshots = {
   focusedTester: join(tmpdir(), "expander-options-focused-tester.png"),
   formula: join(tmpdir(), "expander-options-formula-builder.png"),
   formulaMobile: join(tmpdir(), "expander-options-formula-builder-mobile.png"),
+  fillInBuilder: join(tmpdir(), "expander-options-fill-in-builder.png"),
+  inlinePicker: join(tmpdir(), "expander-inline-command-picker.png"),
+  fillInCompletion: join(tmpdir(), "expander-fill-in-completion.png"),
+  pageStatus: join(tmpdir(), "expander-popup-page-status.png"),
   duplicate: join(tmpdir(), "expander-options-duplicate-command.png"),
   conflict: join(tmpdir(), "expander-options-shortcut-conflict.png"),
   commands: join(tmpdir(), "expander-options-commands.png"),
@@ -351,6 +355,9 @@ try {
   await options.getByRole("button", { name: "Export" }).click();
   const download = await downloadPromise;
   assert.equal(download.suggestedFilename(), "expander-commands.json");
+  const initialExport = JSON.parse(readFileSync(await download.path(), "utf8"));
+  assert.deepEqual(initialExport.usageStats, {});
+  assert.equal(Object.prototype.hasOwnProperty.call(initialExport, "storageMode"), false);
 
   await options.locator("#storage-mode").selectOption("local");
   await waitForValue(
@@ -378,8 +385,12 @@ try {
     name: "import.json",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify({
+      exportedAt: "2026-08-19T12:00:00.000Z",
       sections: [{ id: "source-section", name: "Imported" }],
-      commands: [{ shortcut: "!imported", expansion: "Imported text", enabled: true, sectionId: "source-section" }]
+      commands: [{ id: "source-command", shortcut: "!imported", expansion: "Imported text", enabled: true, sectionId: "source-section" }],
+      usageStats: {
+        "source-command": { count: 7, lastUsedAt: 1787140800000, trackedSince: 1787054400000 }
+      }
     }))
   });
   assert.equal(await options.locator("#import-dialog").evaluate((dialog) => dialog.open), true);
@@ -391,9 +402,26 @@ try {
   await waitForValue(() => options.locator("#library-count").textContent(), "1");
   const storedAfterImport = await getSyncedState(options);
   const importedSection = storedAfterImport.sections.find((section) => section.name === "Imported");
+  const importedCommand = storedAfterImport.commands.find((command) => command.shortcut === "!imported");
   assert.ok(importedSection);
-  assert.ok(storedAfterImport.commands.some((command) => command.shortcut === "!imported" && command.sectionId === importedSection.id));
+  assert.equal(importedCommand.sectionId, importedSection.id);
+  assert.deepEqual(await options.evaluate((commandId) => chrome.storage.local.get(["usageStats"])
+    .then((stored) => stored.usageStats?.[commandId]), importedCommand.id), {
+    count: 7,
+    lastUsedAt: 1787140800000,
+    trackedSince: 1787054400000
+  });
   assert.equal(await options.locator("#settings-message").textContent(), "Imported 1 command. Backup downloaded.");
+
+  const usageExportPromise = options.waitForEvent("download");
+  await options.getByRole("button", { name: "Export" }).click();
+  const usageExport = JSON.parse(readFileSync(await (await usageExportPromise).path(), "utf8"));
+  assert.deepEqual(usageExport.usageStats[importedCommand.id], {
+    count: 7,
+    lastUsedAt: 1787140800000,
+    trackedSince: 1787054400000
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(usageExport, "storageMode"), false);
 
   await options.locator("#import-file").setInputFiles({
     name: "conflict.json",
@@ -401,7 +429,10 @@ try {
     buffer: Buffer.from(JSON.stringify({
       format: "expander-commands",
       version: 4,
-      commands: [{ shortcut: "!IMPORTED", expansion: "Conflicting replacement", enabled: true }]
+      commands: [{ id: "conflicting-command", shortcut: "!IMPORTED", expansion: "Conflicting replacement", enabled: true }],
+      usageStats: {
+        "conflicting-command": { count: 99, lastUsedAt: 1787148000000, trackedSince: 1787148000000 }
+      }
     }))
   });
   assert.deepEqual(await options.locator("#import-summary strong").allTextContents(), ["0", "1", "0"]);
@@ -410,6 +441,8 @@ try {
   await conflictBackupPromise;
   await waitForValue(() => options.locator("#settings-message").textContent(), "Imported 0 commands. Backup downloaded.");
   assert.equal((await getSyncedState(options)).commands.find((command) => command.shortcut === "!imported")?.expansion, "Imported text");
+  assert.equal(await options.evaluate((commandId) => chrome.storage.local.get(["usageStats"])
+    .then((stored) => stored.usageStats?.[commandId]?.count), importedCommand.id), 7);
 
   await options.locator("#import-file").setInputFiles({
     name: "replacement.json",
@@ -418,7 +451,10 @@ try {
       format: "expander-commands",
       version: 4,
       sections: [{ id: "replacement-section", name: "Imported" }],
-      commands: [{ shortcut: "!imported", expansion: "Replaced text", enabled: true, sectionId: "replacement-section" }]
+      commands: [{ id: "replacement-command", shortcut: "!imported", expansion: "Replaced text", enabled: true, sectionId: "replacement-section" }],
+      usageStats: {
+        "replacement-command": { count: 3, lastUsedAt: 1787144400000, trackedSince: 1787130000000 }
+      }
     }))
   });
   await options.locator("input[name='import-mode'][value='replace']").check();
@@ -426,7 +462,16 @@ try {
   await options.getByRole("button", { name: "Import commands" }).click();
   await replacementBackupPromise;
   await waitForValue(() => options.locator("#settings-message").textContent(), "Imported 1 command. Backup downloaded.");
-  assert.equal((await getSyncedState(options)).commands.find((command) => command.shortcut === "!imported")?.expansion, "Replaced text");
+  const replacementCommand = (await getSyncedState(options)).commands.find((command) => command.shortcut === "!imported");
+  assert.equal(replacementCommand?.expansion, "Replaced text");
+  assert.deepEqual(await options.evaluate((commandId) => chrome.storage.local.get(["usageStats"])
+    .then((stored) => stored.usageStats?.[commandId]), replacementCommand.id), {
+    count: 3,
+    lastUsedAt: 1787144400000,
+    trackedSince: 1787130000000
+  });
+  assert.equal(await options.evaluate((commandId) => chrome.storage.local.get(["usageStats"])
+    .then((stored) => Object.prototype.hasOwnProperty.call(stored.usageStats || {}, commandId)), importedCommand.id), false);
   await options.getByRole("button", { name: "Close settings" }).click();
   await options.getByRole("button", { name: /!imported/ }).click();
   assert.equal(await options.locator("#manager-dashboard").isHidden(), true);
@@ -438,8 +483,10 @@ try {
   options.once("dialog", (dialog) => dialog.accept());
   await options.getByRole("button", { name: "Delete command" }).click();
   await waitForValue(() => options.locator("#library-count").textContent(), "0");
-  options.once("dialog", (dialog) => dialog.accept());
   await options.getByRole("button", { name: "Delete section Imported" }).click();
+  await options.locator("#section-delete-dialog").waitFor({ state: "visible" });
+  assert.equal(await options.locator("#section-delete-options").isHidden(), true);
+  await options.locator("#section-delete-dialog").getByRole("button", { name: "Delete section", exact: true }).click();
   await waitForValue(
     () => options.evaluate(() => chrome.storage.sync.get(["sections"]).then((stored) => stored.sections.length)),
     0
@@ -451,7 +498,7 @@ try {
   await popup.locator("#quick-test").waitFor({ state: "visible" });
   assert.equal(await popup.title(), "/Expander");
   assert.equal(await popup.locator(".commands-section, #command-list, #command-count").count(), 0);
-  assert.ok(await popup.locator(".popup-shell").evaluate((element) => element.getBoundingClientRect().height < 320));
+  assert.ok(await popup.locator(".popup-shell").evaluate((element) => element.getBoundingClientRect().height < 380));
   assert.equal(await popup.locator(".brand-lockup h1").textContent(), "Expander");
   assert.equal(await popup.getByText("Ready").count(), 0);
   assert.equal(await popup.locator("#quick-test").inputValue(), "");
@@ -463,6 +510,16 @@ try {
   assert.equal(await popup.locator("#test-label").count(), 0);
   assert.equal(await popup.getByText("Type a shortcut, then press Space.").count(), 0);
   assert.equal(await popup.locator("#test-hint").textContent(), "Press Space, Tab or Enter to expand.");
+  assert.equal((await popup.locator(".creator-footer").textContent()).replace(/\s+/gu, " ").trim(), "Created by presbot");
+  assert.deepEqual(await popup.locator(".creator-footer a").evaluate((link) => ({
+    href: link.href,
+    target: link.target,
+    rel: link.rel
+  })), {
+    href: "https://presbot.dev/",
+    target: "_blank",
+    rel: "noopener noreferrer"
+  });
   await popup.screenshot({ path: screenshots.popup });
 
   const activation = await popup.evaluate(() => chrome.runtime.sendMessage({ type: "activate-open-tabs" }));
@@ -489,7 +546,7 @@ try {
   await options.locator("#shortcut-name").fill("peoria");
   await options.locator("#expansion").fill("PEORIA {{date:today|unknown:1|format:MM/DD}}");
   await options.getByRole("button", { name: "Save changes" }).click();
-  assert.match(await options.locator("#form-message").textContent(), /Fix the date formula: Unknown date operation/u);
+  assert.match(await options.locator("#form-message").textContent(), /Fix the template: Unknown date operation/u);
   assert.equal(await options.locator("#library-count").textContent(), "0");
 
   await options.locator("#expansion").fill("PEORIA ");
@@ -542,6 +599,143 @@ try {
   await popup.locator("#quick-test").fill("/peoria");
   await popup.locator("#quick-test").press("Space");
   assert.equal(await popup.locator("#quick-test").inputValue(), "/peoria ");
+
+  await options.locator("#create-command").click();
+  await options.locator("#shortcut-name").fill("template");
+  await options.locator("#expansion").fill("Hello ");
+  await options.getByRole("button", { name: "Insert fill-in" }).click();
+  assert.equal(await options.locator("#template-field-dialog").evaluate((dialog) => dialog.open), true);
+  assert.equal(await options.locator("#template-field-options-row").isHidden(), true);
+  await options.locator("#template-field-label").fill("Name");
+  await options.locator("#template-field-default").fill("there");
+  assert.equal(await options.locator("#template-field-preview").textContent(), "{{field:Name|there}}");
+  await options.locator("#template-field-type").selectOption("multiline");
+  assert.equal(await options.locator("#template-field-multiline-row").isVisible(), true);
+  assert.equal(await options.locator("#template-field-required-row").isVisible(), true);
+  await options.locator("#template-field-label").fill("Notes");
+  await options.locator("#template-field-multiline").fill("Line one\nLine two");
+  await options.locator("#template-field-required").check();
+  assert.equal(await options.locator("#template-field-preview").textContent(), "{{multiline:Notes|Line one\nLine two|!required}}");
+  await options.locator("#template-field-type").selectOption("datefield");
+  assert.equal(await options.locator("#template-field-date-row").isVisible(), true);
+  await options.locator("#template-field-label").fill("Due date");
+  await options.locator("#template-field-date").fill("2026-08-19");
+  assert.equal(await options.locator("#template-field-preview").textContent(), "{{datefield:Due date|2026-08-19|!required}}");
+  await options.locator("#template-field-type").selectOption("toggle");
+  assert.equal(await options.locator("#template-field-toggle-content-row").isVisible(), true);
+  assert.equal(await options.locator("#template-field-required-row").isHidden(), true);
+  await options.locator("#template-field-label").fill("Include footer");
+  await options.locator("#template-field-toggle-content").fill("Regards,\nPresbot");
+  await options.locator("#template-field-toggle-checked").check();
+  assert.equal(await options.locator("#template-field-preview").textContent(), "{{toggle:Include footer|Regards,\nPresbot|!checked}}");
+  await options.screenshot({ path: screenshots.fillInBuilder });
+  await options.locator("#template-field-type").selectOption("field");
+  await options.locator("#template-field-label").fill("Name");
+  await options.locator("#template-field-default").fill("there");
+  await options.locator("#template-field-required").check();
+  await options.locator("#template-field-form").getByRole("button", { name: "Insert fill-in" }).click();
+  assert.equal(await options.locator("#expansion").inputValue(), "Hello {{field:Name|there|!required}}");
+  const templateExpansion = "Hello {{field:Name|there|!required}}, priority {{choice:Priority|Normal|High}}.\nNotes: {{multiline:Notes|!required}}\nDue: {{datefield:Due date|!required}}\n{{toggle:Include footer|Regards,\nPresbot|!checked}}{{cursor}} Done.";
+  await options.locator("#expansion").fill(templateExpansion);
+  assert.equal(await options.locator("#expansion-preview").textContent(), "Hello there, priority Normal. Notes: Due: Regards, Presbot Done.");
+  await options.getByRole("button", { name: "Save changes" }).click();
+  await waitForValue(() => options.locator("#library-count").textContent(), "1");
+  const templateCommand = (await getSyncedState(options)).commands.find((command) => command.shortcut === "/template");
+  assert.equal(templateCommand.expansion, templateExpansion);
+
+  await options.locator("#manager-test").fill("/template");
+  await options.locator("#manager-test").press("Space");
+  assert.equal(await options.locator("#fill-in-dialog").evaluate((dialog) => dialog.open), true);
+  await options.locator("#fill-in-form").getByRole("button", { name: "Insert command" }).click();
+  assert.equal(await options.locator("#fill-in-message").textContent(), "Enter a value for Notes.");
+  await options.locator('#fill-in-fields input[type="text"]').fill("Aurora");
+  await options.locator("#fill-in-fields select").selectOption("High");
+  await options.locator("#fill-in-fields textarea").fill("First\nSecond");
+  await options.locator('#fill-in-fields input[type="date"]').fill("2026-08-20");
+  assert.equal(await options.locator('#fill-in-fields input[type="checkbox"]').isChecked(), true);
+  await options.locator("#fill-in-form").getByRole("button", { name: "Insert command" }).click();
+  const managerTemplateValue = "Hello Aurora, priority High.\nNotes: First\nSecond\nDue: 08/20/2026\nRegards,\nPresbot Done. ";
+  assert.equal(await options.locator("#manager-test").inputValue(), managerTemplateValue);
+  assert.equal(await options.locator("#manager-test").evaluate((element) => element.selectionStart), managerTemplateValue.indexOf(" Done."));
+
+  await popup.reload();
+  await popup.locator("#quick-test").fill("/template");
+  await popup.locator("#quick-test").press("Space");
+  assert.equal(await popup.locator("#fill-in-dialog").evaluate((dialog) => dialog.open), true);
+  await popup.locator('#fill-in-fields input[type="text"]').fill("Popup");
+  await popup.locator("#fill-in-fields select").selectOption("Normal");
+  await popup.locator("#fill-in-fields textarea").fill("Popup notes");
+  await popup.locator('#fill-in-fields input[type="date"]').fill("2026-08-21");
+  await popup.locator('#fill-in-fields input[type="checkbox"]').uncheck();
+  await popup.locator("#fill-in-form").getByRole("button", { name: "Insert command" }).click();
+  assert.equal(await popup.locator("#quick-test").inputValue(), "Hello Popup, priority Normal.\nNotes: Popup notes\nDue: 08/21/2026\n Done. ");
+
+  await page.locator("#multiline").fill("/template");
+  await page.locator("#multiline").press("Space");
+  const contentUi = page.locator("[data-expander-ui]");
+  assert.equal(await contentUi.locator(".panel").isVisible(), true);
+  await contentUi.locator('.fields input[type="text"]').fill("Website");
+  await contentUi.locator(".fields select").selectOption("High");
+  await contentUi.locator(".fields textarea").fill("Website notes");
+  await contentUi.locator('.fields input[type="date"]').fill("2026-08-22");
+  await page.screenshot({ path: screenshots.fillInCompletion });
+  await contentUi.getByRole("button", { name: "Insert command" }).click();
+  const websiteTemplateValue = "Hello Website, priority High.\nNotes: Website notes\nDue: 08/22/2026\nRegards,\nPresbot Done. ";
+  assert.equal(await page.locator("#multiline").inputValue(), websiteTemplateValue);
+  assert.equal(await page.locator("#multiline").evaluate((element) => element.selectionStart), websiteTemplateValue.indexOf(" Done."));
+
+  await page.locator("#multiline").fill("");
+  await page.locator("#multiline").focus();
+  await page.locator("#multiline").press("Control+Shift+Space");
+  assert.equal(await contentUi.locator(".panel").isVisible(), true);
+  assert.equal(await contentUi.locator(".subtitle").isVisible(), false);
+  await contentUi.locator(".search").fill("template");
+  assert.equal(await contentUi.locator(".result").count(), 1);
+  await page.screenshot({ path: screenshots.inlinePicker });
+  await contentUi.locator(".search").press("Enter");
+  await contentUi.locator('.fields input[type="text"]').fill("Picker");
+  await contentUi.locator(".fields select").selectOption("Normal");
+  await contentUi.locator(".fields textarea").fill("Picker notes");
+  await contentUi.locator('.fields input[type="date"]').fill("2026-08-23");
+  await contentUi.locator('.fields input[type="checkbox"]').uncheck();
+  await contentUi.getByRole("button", { name: "Insert command" }).click();
+  assert.equal(await page.locator("#multiline").inputValue(), "Hello Picker, priority Normal.\nNotes: Picker notes\nDue: 08/23/2026\n Done.");
+  await waitForValue(
+    () => options.evaluate((commandId) => chrome.storage.local.get(["usageStats"]).then((stored) => stored.usageStats?.[commandId]?.count), templateCommand.id),
+    2
+  );
+
+  const websiteTabId = await options.evaluate((url) => chrome.tabs.query({}).then((tabs) => tabs.find((tab) => tab.url === url)?.id), testUrl);
+  assert.ok(websiteTabId);
+  await options.evaluate((tabId) => chrome.scripting.executeScript({
+    target: { tabId, frameIds: [0] },
+    func: () => globalThis.__expanderContentCleanup?.()
+  }), websiteTabId);
+  await page.bringToFront();
+  await popup.reload();
+  await waitForValue(() => popup.locator("#page-status-title").textContent(), "Page needs activation");
+  assert.equal(await popup.locator("#reactivate-page").isVisible(), true);
+  await popup.locator("#reactivate-page").click();
+  await waitForValue(() => popup.locator("#page-status-title").textContent(), `Ready on ${testHostname}`);
+  assert.match(await popup.locator("#page-status-detail").textContent(), /Ctrl\+Shift\+Space opens the picker/u);
+  await popup.screenshot({ path: screenshots.pageStatus });
+
+  options.once("dialog", (dialog) => dialog.accept());
+  await options.getByRole("button", { name: "Delete command" }).click();
+  await waitForValue(() => options.locator("#library-count").textContent(), "0");
+
+  const selectionDraftPromise = context.waitForEvent("page");
+  const selectionDraftResponsePromise = options.evaluate(() => chrome.runtime.sendMessage({
+    type: "create-command-from-selection",
+    selectionText: "Selected first line\nSelected second line"
+  }));
+  const selectionDraft = monitor(await selectionDraftPromise, "selection draft");
+  const selectionDraftResponse = await selectionDraftResponsePromise;
+  assert.equal(selectionDraftResponse.ok, true);
+  await selectionDraft.locator("#expansion").waitFor({ state: "visible" });
+  assert.equal(await selectionDraft.locator("#expansion").inputValue(), "Selected first line\nSelected second line");
+  assert.equal(await selectionDraft.locator("#shortcut-name").inputValue(), "");
+  await selectionDraft.close();
 
   await options.getByRole("button", { name: "New section" }).click();
   await options.locator("#section-name").fill("Work");
@@ -638,6 +832,59 @@ try {
 
   const auroraId = storedAfterCreate.commands.find((command) => command.shortcut === "/aurora").id;
   const sigId = storedAfterCreate.commands.find((command) => command.shortcut === "/sig").id;
+
+  await options.getByRole("button", { name: "Select" }).click();
+  assert.equal(await options.locator("#bulk-actions").isVisible(), true);
+  assert.equal(await options.getByRole("button", { name: "Select visible" }).count(), 0);
+  await options.locator(".options-command-row", { hasText: "/aurora" }).click();
+  await options.locator(".options-command-row", { hasText: "/sig" }).click();
+  assert.equal(await options.locator("#bulk-selected-count").textContent(), "2");
+  assert.equal(await options.locator(".command-select-checkbox:checked").count(), 2);
+
+  await options.locator("#bulk-move").click();
+  await options.locator("#bulk-move-dialog").waitFor({ state: "visible" });
+  assert.match(await options.locator("#bulk-move-subtitle").textContent(), /2 selected commands/);
+  await options.locator("#bulk-move-section").selectOption(workSectionId);
+  await options.locator("#bulk-move-form").getByRole("button", { name: "Move commands" }).click();
+  await waitForValue(
+    () => options.evaluate(() => SlashStore.getState().then((stored) => stored.commands.find((command) => command.shortcut === "/sig")?.sectionId)),
+    workSectionId
+  );
+  await options.locator("#undo-action").waitFor({ state: "visible" });
+  await options.locator("#undo-action").click();
+  await waitForValue(
+    () => options.evaluate(() => SlashStore.getState().then((stored) => stored.commands.find((command) => command.shortcut === "/sig")?.sectionId)),
+    null
+  );
+
+  await options.locator(".command-section-group[data-section-id='general'] .options-command-row", { hasText: "/sig" })
+    .dragTo(options.locator(`.command-section-group[data-section-id='${workSectionId}'] .command-section-header`));
+  await waitForValue(
+    () => options.evaluate(() => SlashStore.getState().then((stored) => stored.commands.find((command) => command.shortcut === "/sig")?.sectionId)),
+    workSectionId
+  );
+  assert.equal(await options.locator("#bulk-selected-count").textContent(), "2");
+  await options.locator("#undo-action").click();
+  await waitForValue(
+    () => options.evaluate(() => SlashStore.getState().then((stored) => stored.commands.find((command) => command.shortcut === "/sig")?.sectionId)),
+    null
+  );
+
+  await options.locator("#bulk-delete").click();
+  await options.locator("#bulk-delete-dialog").waitFor({ state: "visible" });
+  assert.deepEqual(await options.locator("#bulk-delete-preview li:not(.is-more)").allTextContents(), ["/sig", "/aurora"]);
+  await options.locator("#confirm-bulk-delete").click();
+  await waitForValue(() => options.locator("#library-count").textContent(), "1");
+  await waitForValue(() => options.evaluate(async ({ commandIds }) => {
+    const stored = await chrome.storage.local.get(["usageStats"]);
+    return JSON.stringify(commandIds.map((id) => Object.prototype.hasOwnProperty.call(stored.usageStats || {}, id)));
+  }, { commandIds: [sigId, auroraId] }), "[false,false]");
+  await options.locator("#undo-action").click();
+  await waitForValue(() => options.locator("#library-count").textContent(), "3");
+  assert.equal((await getSyncedState(options)).commands.find((command) => command.shortcut === "/aurora")?.sectionId, workSectionId);
+  await options.getByRole("button", { name: "Done" }).click();
+  assert.equal(await options.locator("#bulk-actions").isHidden(), true);
+
   await options.evaluate(async ({ commandId, trackedSince }) => {
     const stored = await chrome.storage.local.get(["usageStats"]);
     await chrome.storage.local.set({
@@ -663,7 +910,8 @@ try {
   assert.equal(await options.locator("#library-count").textContent(), "1 of 3");
   await options.locator("#search").fill("");
   await options.locator("#search").evaluate((element) => element.blur());
-  const commandColor = await options.getByText("/aurora", { exact: true }).evaluate((element) => getComputedStyle(element).color);
+  const commandColor = await options.locator(".library-pane .options-command-shortcut", { hasText: "/aurora" })
+    .evaluate((element) => getComputedStyle(element).color);
   assert.equal(commandColor, "rgb(8, 122, 73)");
   assert.equal(await options.locator(".options-command-row").first().evaluate((element) => getComputedStyle(element).height), "58px");
   await options.getByRole("button", { name: "Collapse Work section" }).click();
@@ -884,8 +1132,27 @@ try {
   await options.getByRole("button", { name: "Delete command" }).click();
   await waitForValue(() => options.locator("#library-count").textContent(), "2");
 
-  options.once("dialog", (dialog) => dialog.accept());
   await options.getByRole("button", { name: "Delete section Work" }).click();
+  await options.locator("#section-delete-dialog").waitFor({ state: "visible" });
+  await options.locator("input[name='section-delete-action'][value='delete']").check();
+  assert.equal(await options.locator("#section-delete-commands-label").textContent(), "Delete 1 command too");
+  await options.locator("#section-delete-dialog").getByRole("button", { name: "Delete section", exact: true }).click();
+  await waitForValue(
+    () => options.evaluate(() => chrome.storage.sync.get(["sections"]).then((stored) => stored.sections.length)),
+    0
+  );
+  await waitForValue(() => options.locator("#library-count").textContent(), "1");
+  await options.locator("#undo-action").click();
+  await waitForValue(
+    () => options.evaluate(() => chrome.storage.sync.get(["sections"]).then((stored) => stored.sections.length)),
+    1
+  );
+  await waitForValue(() => options.locator("#library-count").textContent(), "2");
+
+  await options.getByRole("button", { name: "Delete section Work" }).click();
+  await options.locator("#section-delete-dialog").waitFor({ state: "visible" });
+  assert.equal(await options.locator("input[name='section-delete-action'][value='keep']").isChecked(), true);
+  await options.locator("#section-delete-dialog").getByRole("button", { name: "Delete section", exact: true }).click();
   await waitForValue(
     () => options.evaluate(() => chrome.storage.sync.get(["sections"]).then((stored) => stored.sections.length)),
     0
@@ -1044,6 +1311,16 @@ try {
   const visibleConflictIcons = await manager.locator(".command-conflict-icon:not(.is-empty)").count();
   assert.equal(visibleConflictIcons, 0);
 
+  const extensionsPage = await context.newPage();
+  await extensionsPage.goto("chrome://extensions/");
+  const expanderItem = extensionsPage.locator("extensions-item").filter({ hasText: "/Expander" });
+  await expanderItem.locator("#dev-reload-button").click();
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await page.locator("#plain").fill("/sig");
+  await page.locator("#plain").press("Space");
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  assert.equal(await page.locator("#plain").inputValue(), "/sig ");
+
   assert.deepEqual(consoleProblems, []);
   console.log(JSON.stringify({
     extensionId,
@@ -1051,10 +1328,17 @@ try {
       "empty first-run state",
       "starter migration unit coverage",
       "existing-tab activation",
+      "stale-listener cleanup after extension reload",
+      "current-page status and targeted reactivation",
       "future page content scripts",
       "embedded frames",
       "base and child-host usage tracking",
       "dynamic date formulas",
+      "single-line, multiline, choice, date, and optional fill-in fields",
+      "required fill-in validation",
+      "template cursor placement",
+      "inline command picker",
+      "selection-to-command drafts",
       "visual date formula builder",
       "formula validation",
       "collision-safe command duplication drafts",
@@ -1084,14 +1368,19 @@ try {
       "new commands default to General",
       "manual section assignment",
       "drag-and-drop section moves",
+      "multi-select command management",
+      "selection-aware group dragging",
+      "undoable bulk move and delete",
       "collapsible sections",
-      "safe section deletion",
+      "safe section deletion choices",
       "green shortcut tokens",
       "trash-icon command deletion",
       "three-rail manager test box",
       "CRUD",
       "search",
       "import/export in settings",
+      "usage history export and ID-remapped restore",
+      "device-specific storage choice preservation",
       "validated import preview with merge and replace",
       "automatic pre-import backups",
       "per-site pause controls",

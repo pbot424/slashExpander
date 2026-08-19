@@ -147,8 +147,31 @@ body {
 
 .library-heading-actions {
   display: flex;
+  align-items: center;
   gap: 3px;
   margin-left: auto;
+}
+
+.library-select-button {
+  min-height: 32px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: transparent;
+  color: #087a49;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.library-select-button:hover,
+.library-select-button[aria-pressed="true"] {
+  background: #ecfff6;
+}
+
+.library-select-button:disabled {
+  background: transparent;
+  color: var(--faint);
+  cursor: default;
 }
 
 .library-create-icon {
@@ -221,6 +244,63 @@ body {
   font-size: 12px;
 }
 
+.bulk-actions {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: -4px 0 14px;
+  padding: 9px;
+  border: 1px solid rgba(9, 154, 91, 0.34);
+  border-radius: 9px;
+  background: rgba(247, 255, 251, 0.97);
+  box-shadow: 0 5px 14px rgba(16, 17, 20, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.bulk-actions[hidden] {
+  display: none;
+}
+
+.bulk-actions > span {
+  margin-right: auto;
+  color: #087a49;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.bulk-actions button {
+  min-height: 28px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: transparent;
+  color: #087a49;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.bulk-actions button:hover:not(:disabled) {
+  background: #e4f8ee;
+}
+
+.bulk-actions button.is-delete {
+  color: var(--danger);
+}
+
+.bulk-actions button:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+body.is-selection-mode .library-create-icon,
+body.is-selection-mode .command-section-actions {
+  display: none;
+}
+
 .options-command-list {
   display: grid;
   gap: 20px;
@@ -238,12 +318,40 @@ body {
   box-shadow: 0 0 0 2px rgba(9, 154, 91, 0.58);
 }
 
+.command-section-group.is-drop-target::after {
+  content: attr(data-drop-message);
+  display: block;
+  padding: 8px 10px;
+  color: #087a49;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
 .command-section-header {
   display: flex;
   align-items: center;
   min-height: 38px;
   gap: 8px;
   padding: 0 4px 7px;
+}
+
+.section-select-checkbox,
+.command-select-checkbox {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: #099a5b;
+  cursor: pointer;
+}
+
+.section-select-checkbox {
+  display: none;
+  flex: 0 0 auto;
+}
+
+body.is-selection-mode .section-select-checkbox {
+  display: block;
 }
 
 .section-collapse {
@@ -347,6 +455,28 @@ body {
   cursor: default;
 }
 
+.command-row-shell {
+  position: relative;
+}
+
+.command-select-checkbox {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  z-index: 2;
+  display: none;
+  transform: translateY(-50%);
+}
+
+body.is-selection-mode .command-select-checkbox {
+  display: block;
+}
+
+body.is-selection-mode .options-command-row {
+  padding-left: 46px;
+  cursor: pointer;
+}
+
 .options-command-row:active {
   cursor: default;
 }
@@ -371,6 +501,14 @@ body {
   background: var(--coral-wash);
 }
 
+.options-command-row.is-bulk-selected {
+  background: #ecfff6;
+}
+
+.options-command-row.is-bulk-selected::before {
+  background: #099a5b;
+}
+
 .options-command-row.is-selected::before {
   background: var(--coral);
 }
@@ -393,6 +531,11 @@ body {
 }
 
 .options-command-row.is-selected .options-command-shortcut {
+  border-color: rgba(9, 154, 91, 0.62);
+  background: #f7fffb;
+}
+
+.options-command-row.is-bulk-selected .options-command-shortcut {
   border-color: rgba(9, 154, 91, 0.62);
   background: #f7fffb;
 }
@@ -685,6 +828,12 @@ body {
 .field-label-row label {
   font-size: 14px;
   font-weight: 720;
+}
+
+.field-label-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .formula-trigger {
@@ -1074,6 +1223,191 @@ body {
   background: rgba(16, 17, 20, 0.34);
 }
 
+.bulk-dialog {
+  width: min(92vw, 520px);
+}
+
+.bulk-dialog-body {
+  padding: 22px 24px 24px;
+}
+
+.bulk-dialog-field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.bulk-dialog-field select {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.bulk-delete-preview {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bulk-delete-preview li {
+  overflow: hidden;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-delete-preview li.is-more {
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  font-weight: 650;
+}
+
+.danger-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: var(--radius);
+  background: var(--danger);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.danger-button:hover {
+  background: #922222;
+}
+
+.danger-button:disabled {
+  background: #d8b8b8;
+  cursor: default;
+}
+
+.section-delete-options {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.section-delete-options[hidden] {
+  display: none;
+}
+
+.section-delete-options legend {
+  margin-bottom: 9px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.section-delete-options label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.section-delete-options label:has(input:checked) {
+  border-color: rgba(9, 154, 91, 0.54);
+  background: #f4fff9;
+}
+
+.section-delete-options label.is-destructive:has(input:checked) {
+  border-color: rgba(181, 43, 43, 0.45);
+  background: #fff7f7;
+}
+
+.section-delete-options span {
+  display: grid;
+  gap: 3px;
+}
+
+.section-delete-options strong {
+  font-size: 13px;
+}
+
+.section-delete-options small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.section-delete-options input {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: #099a5b;
+}
+
+.section-delete-options label.is-destructive input {
+  accent-color: var(--danger);
+}
+
+.undo-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 12px 12px 12px 16px;
+  border-radius: 10px;
+  background: #16181c;
+  color: #fff;
+  box-shadow: 0 12px 34px rgba(16, 17, 20, 0.28);
+  font-size: 13px;
+}
+
+.undo-toast[hidden] {
+  display: none;
+}
+
+.undo-toast > span {
+  line-height: 1.4;
+}
+
+.undo-toast button {
+  padding: 5px 7px;
+  border-radius: 5px;
+  background: transparent;
+  color: #7ae2ad;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.undo-toast button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.undo-toast .undo-dismiss {
+  color: #c9ccd2;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1;
+}
+
 .usage-dialog {
   width: min(92vw, 580px);
   overflow: hidden;
@@ -1184,10 +1518,11 @@ body {
   font-weight: 750;
 }
 
-.formula-field select {
+.formula-field select,
+.formula-field input,
+.formula-field textarea {
   width: 100%;
-  height: 42px;
-  padding: 0 12px;
+  padding: 10px 12px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: #fff;
@@ -1195,9 +1530,113 @@ body {
   font-size: 13px;
 }
 
-.formula-field select:focus {
+.formula-field select,
+.formula-field input {
+  height: 42px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.formula-field textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.formula-field select:focus,
+.formula-field input:focus,
+.formula-field textarea:focus {
   border-color: var(--coral);
   box-shadow: var(--shadow-focus);
+}
+
+.formula-field small {
+  font-weight: 500;
+}
+
+.template-field-row {
+  margin-top: 14px;
+}
+
+.template-field-row[hidden] {
+  display: none;
+}
+
+.template-checkbox-row {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.template-checkbox-row input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--coral);
+}
+
+.template-token-preview {
+  align-items: center;
+}
+
+.template-token-preview code {
+  overflow-wrap: anywhere;
+  color: #087a49;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
+.fill-in-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.fill-in-toggle {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.fill-in-toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  accent-color: var(--coral);
+}
+
+.fill-in-toggle-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fill-in-toggle-copy > span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.fill-in-toggle-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: pre-wrap;
+}
+
+.fill-in-fields [aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(184, 44, 44, 0.12);
 }
 
 .formula-preset-note {
@@ -1746,6 +2185,16 @@ body {
 
   #editor-title {
     font-size: 23px;
+  }
+
+  .field-label-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .field-label-actions {
+    flex-wrap: wrap;
   }
 
   .formula-preview {

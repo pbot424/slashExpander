@@ -40,6 +40,7 @@
               <h2>Your commands</h2>
               <span id="library-count">0</span>
               <div class="library-heading-actions">
+                <button id="toggle-selection" class="library-select-button" type="button">Select</button>
                 <button id="create-command" class="library-create-icon" type="button" aria-label="New command" title="New command">
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -59,6 +60,12 @@
               <button id="cancel-section" class="section-cancel" type="button" aria-label="Cancel new section">Cancel</button>
               <p id="section-message" class="section-message" role="status" aria-live="polite"></p>
             </form>
+            <div id="bulk-actions" class="bulk-actions" hidden>
+              <span><strong id="bulk-selected-count">0</strong> selected</span>
+              <button id="bulk-move" type="button" disabled>Move</button>
+              <button id="bulk-delete" class="is-delete" type="button" disabled>Delete</button>
+              <button id="clear-selection" type="button" disabled>Clear</button>
+            </div>
             <div id="options-command-list" class="options-command-list"></div>
           </div>
 
@@ -138,12 +145,15 @@
             <div class="field-group">
               <div class="field-label-row">
                 <label for="expansion">Expansion</label>
-                <button id="open-formula" class="formula-trigger" type="button">
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M5 3.5v3M15 3.5v3M3.5 8h13M5 5h10a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 15 17H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                  </svg>
-                  Insert formula
-                </button>
+                <div class="field-label-actions">
+                  <button id="open-template-field" class="formula-trigger" type="button">Insert fill-in</button>
+                  <button id="open-formula" class="formula-trigger" type="button">
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M5 3.5v3M15 3.5v3M3.5 8h13M5 5h10a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 15 17H5a1.5 1.5 0 0 1-1.5-1.5v-9A1.5 1.5 0 0 1 5 5Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Insert formula
+                  </button>
+                </div>
               </div>
               <textarea id="expansion" rows="8" maxlength="8000" spellcheck="true"></textarea>
               <p id="formula-status" class="formula-status" role="status" aria-live="polite"></p>
@@ -303,7 +313,7 @@
         <section class="settings-data" aria-labelledby="settings-data-title">
           <div>
             <h3 id="settings-data-title">Data</h3>
-            <p>Move your commands and categories between browsers.</p>
+            <p>Move your extension data between browsers.</p>
           </div>
           <div class="settings-data-actions">
             <button id="import-commands" class="secondary-button" type="button">Import</button>
@@ -342,7 +352,7 @@
           <span><strong>Import settings</strong><small>Apply expansion methods and paused sites from this file when available.</small></span>
           <input id="import-settings" type="checkbox" checked>
         </label>
-        <p class="import-backup-note">A backup of your current library will download before changes are applied.</p>
+        <p class="import-backup-note">Usage history is restored with imported commands. A backup of your current library will download before changes are applied.</p>
         <div class="formula-actions">
           <button id="apply-import" class="primary-button" type="submit">Import commands</button>
           <button id="cancel-import" class="secondary-button" type="button">Cancel</button>
@@ -383,6 +393,171 @@
         </div>
       </form>
     </dialog>
+
+    <dialog id="bulk-move-dialog" class="settings-dialog bulk-dialog" aria-labelledby="bulk-move-title">
+      <div class="settings-dialog-header">
+        <div>
+          <h2 id="bulk-move-title">Move commands</h2>
+          <p id="bulk-move-subtitle" class="dialog-subtitle"></p>
+        </div>
+        <button id="close-bulk-move" class="dialog-close" type="button" aria-label="Close move commands">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <form id="bulk-move-form" class="bulk-dialog-body">
+        <label class="bulk-dialog-field" for="bulk-move-section">
+          <span>Move to</span>
+          <select id="bulk-move-section"></select>
+        </label>
+        <div class="formula-actions">
+          <button class="primary-button" type="submit">Move commands</button>
+          <button id="cancel-bulk-move" class="secondary-button" type="button">Cancel</button>
+        </div>
+        <p id="bulk-move-message" class="settings-message" role="status" aria-live="polite"></p>
+      </form>
+    </dialog>
+
+    <dialog id="bulk-delete-dialog" class="settings-dialog bulk-dialog" aria-labelledby="bulk-delete-title">
+      <div class="settings-dialog-header">
+        <div>
+          <h2 id="bulk-delete-title">Delete commands?</h2>
+          <p class="dialog-subtitle">This removes the selected commands and their usage history.</p>
+        </div>
+        <button id="close-bulk-delete" class="dialog-close" type="button" aria-label="Close delete commands">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="bulk-dialog-body">
+        <ul id="bulk-delete-preview" class="bulk-delete-preview"></ul>
+        <div class="formula-actions">
+          <button id="confirm-bulk-delete" class="danger-button" type="button">Delete commands</button>
+          <button id="cancel-bulk-delete" class="secondary-button" type="button">Cancel</button>
+        </div>
+        <p id="bulk-delete-message" class="settings-message" role="status" aria-live="polite"></p>
+      </div>
+    </dialog>
+
+    <dialog id="section-delete-dialog" class="settings-dialog bulk-dialog" aria-labelledby="section-delete-title">
+      <div class="settings-dialog-header">
+        <div>
+          <h2 id="section-delete-title">Delete section?</h2>
+          <p id="section-delete-subtitle" class="dialog-subtitle"></p>
+        </div>
+        <button id="close-section-delete" class="dialog-close" type="button" aria-label="Close delete section">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <form id="section-delete-form" class="bulk-dialog-body">
+        <fieldset id="section-delete-options" class="section-delete-options">
+          <legend>What should happen to its commands?</legend>
+          <label>
+            <span><strong>Keep commands</strong><small>Move them to General.</small></span>
+            <input type="radio" name="section-delete-action" value="keep" checked>
+          </label>
+          <label class="is-destructive">
+            <span><strong id="section-delete-commands-label">Delete commands too</strong><small>This also removes their usage history.</small></span>
+            <input type="radio" name="section-delete-action" value="delete">
+          </label>
+        </fieldset>
+        <div class="formula-actions">
+          <button id="confirm-section-delete" class="danger-button" type="submit">Delete section</button>
+          <button id="cancel-section-delete" class="secondary-button" type="button">Cancel</button>
+        </div>
+        <p id="section-delete-message" class="settings-message" role="status" aria-live="polite"></p>
+      </form>
+    </dialog>
+
+    <dialog id="template-field-dialog" class="settings-dialog formula-dialog" aria-labelledby="template-field-title">
+      <div class="settings-dialog-header">
+        <div>
+          <h2 id="template-field-title">Insert fill-in</h2>
+          <p class="dialog-subtitle">Ask for a value when this command expands.</p>
+        </div>
+        <button id="close-template-field" class="dialog-close" type="button" aria-label="Close fill-in builder">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <form id="template-field-form" class="formula-form">
+        <label class="formula-field">
+          <span>Type</span>
+          <select id="template-field-type">
+            <option value="field">Single-line text</option>
+            <option value="multiline">Multiline text</option>
+            <option value="choice">Choice menu</option>
+            <option value="datefield">Date</option>
+            <option value="toggle">Optional text</option>
+            <option value="cursor">Final cursor position</option>
+          </select>
+        </label>
+        <label id="template-field-label-row" class="formula-field template-field-row">
+          <span>Label</span>
+          <input id="template-field-label" type="text" maxlength="60" autocomplete="off" placeholder="Customer name">
+        </label>
+        <label id="template-field-default-row" class="formula-field template-field-row">
+          <span>Default value <small>(optional)</small></span>
+          <input id="template-field-default" type="text" maxlength="200" autocomplete="off" placeholder="there">
+        </label>
+        <label id="template-field-options-row" class="formula-field template-field-row" hidden>
+          <span>Options <small>(one per line)</small></span>
+          <textarea id="template-field-options" rows="4" maxlength="1000" placeholder="Normal&#10;High"></textarea>
+        </label>
+        <label id="template-field-multiline-row" class="formula-field template-field-row" hidden>
+          <span>Default text <small>(optional)</small></span>
+          <textarea id="template-field-multiline" rows="4" maxlength="2000" placeholder="Add default multiline text"></textarea>
+        </label>
+        <label id="template-field-date-row" class="formula-field template-field-row" hidden>
+          <span>Default date <small>(optional; inserts as MM/DD/YYYY)</small></span>
+          <input id="template-field-date" type="date">
+        </label>
+        <label id="template-field-toggle-content-row" class="formula-field template-field-row" hidden>
+          <span>Text to include</span>
+          <textarea id="template-field-toggle-content" rows="4" maxlength="2000" placeholder="Thank you for your time."></textarea>
+        </label>
+        <label id="template-field-required-row" class="template-field-row template-checkbox-row">
+          <input id="template-field-required" type="checkbox">
+          <span>Require a value before inserting</span>
+        </label>
+        <label id="template-field-toggle-checked-row" class="template-field-row template-checkbox-row" hidden>
+          <input id="template-field-toggle-checked" type="checkbox">
+          <span>Checked by default</span>
+        </label>
+        <div class="formula-preview template-token-preview" aria-live="polite">
+          <span>Token</span>
+          <code id="template-field-preview">{{field:Customer name}}</code>
+        </div>
+        <div class="formula-actions">
+          <button class="primary-button" type="submit">Insert fill-in</button>
+          <button id="cancel-template-field" class="secondary-button" type="button">Cancel</button>
+        </div>
+        <p id="template-field-message" class="settings-message" role="status" aria-live="polite"></p>
+      </form>
+    </dialog>
+
+    <dialog id="fill-in-dialog" class="settings-dialog formula-dialog" aria-labelledby="fill-in-title">
+      <div class="settings-dialog-header">
+        <div>
+          <h2 id="fill-in-title">Complete command</h2>
+          <p id="fill-in-subtitle" class="dialog-subtitle"></p>
+        </div>
+        <button id="close-fill-in" class="dialog-close" type="button" aria-label="Cancel command expansion">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <form id="fill-in-form" class="formula-form" novalidate>
+        <div id="fill-in-fields" class="fill-in-fields"></div>
+        <div class="formula-actions">
+          <button class="primary-button" type="submit">Insert command</button>
+          <button id="cancel-fill-in" class="secondary-button" type="button">Cancel</button>
+        </div>
+        <p id="fill-in-message" class="settings-message" role="status" aria-live="polite"></p>
+      </form>
+    </dialog>
+
+    <div id="undo-toast" class="undo-toast" role="status" aria-live="polite" hidden>
+      <span id="undo-message"></span>
+      <button id="undo-action" type="button">Undo</button>
+      <button id="dismiss-undo" class="undo-dismiss" type="button" aria-label="Dismiss">&times;</button>
+    </div>
 
     <script src="shared/defaults.js"></script>
     <script src="shared/template-engine.js"></script>

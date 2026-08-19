@@ -1,7 +1,7 @@
 (function exposeTemplateEngine(global) {
   "use strict";
 
-  const DATE_TOKEN = /\{\{date:([^{}]+)\}\}/gu;
+  const TEMPLATE_TOKEN = /\{\{(?:(date|field|choice|multiline|datefield|toggle):([^{}]+)|(cursor))\}\}/gu;
   const FORMAT_PARTS = /YYYY|MMMM|MMM|MM|DD|dddd|ddd|M|D/gu;
   const MONTHS_LONG = [
     "January", "February", "March", "April", "May", "June",
@@ -107,27 +107,226 @@
     return formatDate(date, format);
   }
 
-  function resolveTemplate(template, options = {}) {
+  function parseTemplateField(type, expression, index, token) {
+    const [rawLabel, ...rawValues] = String(expression || "").split("|");
+    const label = rawLabel.trim();
+    if (!label) {
+      return { error: { index, token, message: "Give every fill-in field a label." } };
+    }
+
+    if (type === "choice") {
+      const choices = rawValues.map((value) => value.trim()).filter(Boolean);
+      if (!choices.length) {
+        return { error: { index, token, message: `Add at least one option for ${label}.` } };
+      }
+      return {
+        field: {
+          type,
+          label,
+          choices,
+          defaultValue: choices[0],
+          required: false
+        }
+      };
+    }
+
+    if (type === "toggle") {
+      const defaultChecked = rawValues.at(-1)?.trim() === "!checked";
+      if (defaultChecked) rawValues.pop();
+      const insertValue = rawValues.join("|").trim();
+      if (!insertValue) {
+        return { error: { index, token, message: `Add the optional text for ${label}.` } };
+      }
+      return {
+        field: {
+          type,
+          label,
+          choices: [],
+          defaultValue: defaultChecked,
+          required: false,
+          insertValue
+        }
+      };
+    }
+
+    const required = rawValues.at(-1)?.trim() === "!required";
+    if (required) rawValues.pop();
+    const defaultValue = rawValues.length ? rawValues.join("|").trim() : "";
+    if (type === "datefield" && defaultValue && !parseDateFieldValue(defaultValue)) {
+      return { error: { index, token, message: `Use a YYYY-MM-DD default date for ${label}.` } };
+    }
+
+    return {
+      field: {
+        type,
+        label,
+        choices: [],
+        defaultValue,
+        required
+      }
+    };
+  }
+
+  function parseDateFieldValue(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(String(value || ""));
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(year, month - 1, day, 12);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+    return date;
+  }
+
+  function analyzeTemplate(template) {
     const source = String(template || "");
     const errors = [];
-    let matchedTokens = 0;
-    const value = source.replace(DATE_TOKEN, (token, expression, index) => {
-      matchedTokens += 1;
-      try {
-        return resolveDateExpression(expression, options);
-      } catch (error) {
-        errors.push({ index, token, message: error.message || "Invalid date formula." });
-        return token;
+    const fields = [];
+    const tokens = [];
+    const fieldsByLabel = new Map();
+    const matchedStarts = new Set();
+    let cursorCount = 0;
+
+    for (const match of source.matchAll(TEMPLATE_TOKEN)) {
+      const [token, type, expression, cursor] = match;
+      matchedStarts.add(match.index);
+      if (cursor) {
+        cursorCount += 1;
+        tokens.push({ type: "cursor", token, index: match.index });
+        continue;
+      }
+      if (type === "date") {
+        tokens.push({ type, expression, token, index: match.index });
+        continue;
+      }
+
+      const parsed = parseTemplateField(type, expression, match.index, token);
+      if (parsed.error) errors.push(parsed.error);
+      const field = parsed.field || null;
+      tokens.push({ type, expression, token, index: match.index, field });
+      if (!field) continue;
+
+      const existing = fieldsByLabel.get(field.label);
+      if (!existing) {
+        fieldsByLabel.set(field.label, field);
+        fields.push(field);
+      } else if (JSON.stringify(existing) !== JSON.stringify(field)) {
+        errors.push({
+          index: match.index,
+          token,
+          message: `Use the same configuration each time ${field.label} appears.`
+        });
+      }
+    }
+
+    if (cursorCount > 1) {
+      errors.push({
+        index: source.indexOf("{{cursor}}", source.indexOf("{{cursor}}") + 1),
+        token: "{{cursor}}",
+        message: "Use only one cursor position per command."
+      });
+    }
+
+    ["date", "field", "choice", "multiline", "datefield", "toggle"].forEach((type) => {
+      const opening = new RegExp(`\\{\\{${type}:`, "gu");
+      for (const match of source.matchAll(opening)) {
+        if (matchedStarts.has(match.index)) continue;
+        const label = type === "date"
+          ? "date formula"
+          : type === "choice"
+            ? "choice field"
+            : type === "toggle"
+              ? "optional text field"
+              : "fill-in field";
+        errors.push({ index: match.index, token: null, message: `Close every ${label} with }}.` });
       }
     });
-    const openings = source.match(/\{\{date:/gu)?.length || 0;
-    if (openings > matchedTokens) {
-      errors.push({ index: source.indexOf("{{date:"), token: null, message: "Close every date formula with }}." });
+
+    const cursorOpening = /\{\{cursor/gu;
+    for (const match of source.matchAll(cursorOpening)) {
+      if (matchedStarts.has(match.index)) continue;
+      errors.push({ index: match.index, token: null, message: "Write the cursor position as {{cursor}}." });
     }
-    return { value, errors };
+
+    return { source, fields, tokens, errors };
+  }
+
+  function rawValueForField(values, field, useDefaults) {
+    if (values instanceof Map && values.has(field.label)) return values.get(field.label) ?? "";
+    if (values && typeof values === "object" && Object.prototype.hasOwnProperty.call(values, field.label)) {
+      return values[field.label] ?? "";
+    }
+    return useDefaults ? field.defaultValue : null;
+  }
+
+  function resolveFieldValue(field, rawValue) {
+    if (rawValue === null) return { value: null };
+    if (field.type === "toggle") {
+      const enabled = rawValue === true
+        || rawValue === 1
+        || ["true", "yes", "1"].includes(String(rawValue).toLowerCase());
+      return { value: enabled ? field.insertValue : "" };
+    }
+    const value = String(rawValue);
+    if (field.type === "datefield" && value) {
+      const date = parseDateFieldValue(value);
+      if (!date) return { value, error: `Choose a valid date for ${field.label}.` };
+      return { value: formatDate(date, "MM/DD/YYYY") };
+    }
+    return { value };
+  }
+
+  function resolveTemplate(template, options = {}) {
+    const analysis = analyzeTemplate(template);
+    const errors = [...analysis.errors];
+    const fieldValues = new Map();
+    let value = "";
+    let sourceOffset = 0;
+    let cursorOffset = null;
+
+    analysis.fields.forEach((field) => {
+      const rawValue = rawValueForField(options.values, field, options.useDefaults === true);
+      if (options.values && field.required && !String(rawValue ?? "").trim()) {
+        errors.push({ index: -1, token: null, fieldLabel: field.label, message: `Enter a value for ${field.label}.` });
+      }
+      const resolved = resolveFieldValue(field, rawValue);
+      if (resolved.error) {
+        errors.push({ index: -1, token: null, fieldLabel: field.label, message: resolved.error });
+      }
+      fieldValues.set(field.label, resolved.value);
+    });
+
+    analysis.tokens.forEach((entry) => {
+      value += analysis.source.slice(sourceOffset, entry.index);
+      sourceOffset = entry.index + entry.token.length;
+
+      if (entry.type === "cursor") {
+        if (cursorOffset === null) cursorOffset = value.length;
+        return;
+      }
+      if (entry.type === "date") {
+        try {
+          value += resolveDateExpression(entry.expression, options);
+        } catch (error) {
+          errors.push({ index: entry.index, token: entry.token, message: error.message || "Invalid date formula." });
+          value += entry.token;
+        }
+        return;
+      }
+      if (!entry.field) {
+        value += entry.token;
+        return;
+      }
+      const fieldValue = fieldValues.get(entry.field.label);
+      value += fieldValue === null ? entry.token : fieldValue;
+    });
+
+    value += analysis.source.slice(sourceOffset);
+    return { value, errors, fields: analysis.fields, cursorOffset };
   }
 
   const api = {
+    analyzeTemplate,
     resolveDateExpression,
     resolveTemplate
   };

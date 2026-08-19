@@ -15,13 +15,17 @@ https://github.com/pbot424/slashExpander/blob/main/PRIVACY.md
 Build a shortcut library that fits the way you work:
 
 - Create commands with familiar prefixes such as `/`, `;`, and `!`.
+- Search and insert commands beside the active field with `Ctrl+Shift+Space`.
+- Add single-line or multiline text, choice menus, date pickers, optional text, required validation, and cursor placement to reusable templates.
 - Organize commands into collapsible categories and drag them between categories.
 - Search, edit, duplicate, and test commands from one focused manager.
 - Control case sensitivity for each command.
 - Use Dynamic Formulas, including the PO Date Range preset, for text that updates when expanded.
 - Review your most-used commands and find older commands you may no longer need.
-- Import and export your command library whenever you need a backup.
+- Import and export commands, categories, settings, and usage history whenever you need a backup.
 - Pause expansion on individual websites whenever you need to.
+- Check whether /Expander is ready on the current page and reactivate it when needed.
+- Start a new command directly from text selected on a page.
 - Choose Chrome Sync or keep your command library only on the current device.
 
 Your commands and settings stay in your selected Chrome storage area. /Expander has no external backend, analytics, or advertising.
@@ -45,6 +49,10 @@ The storage permission is required to save the user's commands, categories, expa
 ### Scripting
 
 The scripting permission is used to inject /Expander's packaged content scripts into eligible tabs that were already open when the extension was installed, started, or manually activated. This lets text expansion become available without requiring the user to refresh every open page. Only JavaScript files bundled inside the extension package are injected.
+
+### Context menus
+
+The contextMenus permission adds **Save selection as /Expander command** when the user selects text. The selected text is placed in temporary extension-session storage only while the command editor opens and is saved permanently only if the user submits the new command.
 
 ### Host permission
 
@@ -71,4 +79,4 @@ Leave these categories unselected because /Expander does not intentionally acces
 - Location
 - Web history
 
-Commands, categories, expansion settings, and paused-site domains use `chrome.storage.sync` by default. Chrome may sync that data according to the user's Chrome Sync settings, but the developer does not receive or have access to it. Users can select device-only storage, which keeps the active command library and settings in `chrome.storage.local` instead. Usage counts, last-used timestamps, the selected storage mode, and interface preferences remain in `chrome.storage.local`. /Expander does not operate an external server, sell data, use data for advertising, or share data with third parties.
+Commands, categories, expansion settings, and paused-site domains use `chrome.storage.sync` by default. Chrome may sync that data according to the user's Chrome Sync settings, but the developer does not receive or have access to it. Users can select device-only storage, which keeps the active command library and settings in `chrome.storage.local` instead. Usage counts, last-used timestamps, the selected storage mode, and interface preferences remain in `chrome.storage.local`; usage history is included only in backups the user explicitly exports. /Expander does not operate an external server, sell data, use data for advertising, or share data with third parties.

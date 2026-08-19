@@ -35,6 +35,32 @@
     formulaForm: document.querySelector("#formula-form"),
     formulaPreset: document.querySelector("#formula-preset"),
     formulaPreview: document.querySelector("#formula-preview"),
+    templateFieldDialog: document.querySelector("#template-field-dialog"),
+    templateFieldForm: document.querySelector("#template-field-form"),
+    templateFieldType: document.querySelector("#template-field-type"),
+    templateFieldLabelRow: document.querySelector("#template-field-label-row"),
+    templateFieldLabel: document.querySelector("#template-field-label"),
+    templateFieldDefaultRow: document.querySelector("#template-field-default-row"),
+    templateFieldDefault: document.querySelector("#template-field-default"),
+    templateFieldOptionsRow: document.querySelector("#template-field-options-row"),
+    templateFieldOptions: document.querySelector("#template-field-options"),
+    templateFieldMultilineRow: document.querySelector("#template-field-multiline-row"),
+    templateFieldMultiline: document.querySelector("#template-field-multiline"),
+    templateFieldDateRow: document.querySelector("#template-field-date-row"),
+    templateFieldDate: document.querySelector("#template-field-date"),
+    templateFieldToggleContentRow: document.querySelector("#template-field-toggle-content-row"),
+    templateFieldToggleContent: document.querySelector("#template-field-toggle-content"),
+    templateFieldRequiredRow: document.querySelector("#template-field-required-row"),
+    templateFieldRequired: document.querySelector("#template-field-required"),
+    templateFieldToggleCheckedRow: document.querySelector("#template-field-toggle-checked-row"),
+    templateFieldToggleChecked: document.querySelector("#template-field-toggle-checked"),
+    templateFieldPreview: document.querySelector("#template-field-preview"),
+    templateFieldMessage: document.querySelector("#template-field-message"),
+    fillInDialog: document.querySelector("#fill-in-dialog"),
+    fillInForm: document.querySelector("#fill-in-form"),
+    fillInSubtitle: document.querySelector("#fill-in-subtitle"),
+    fillInFields: document.querySelector("#fill-in-fields"),
+    fillInMessage: document.querySelector("#fill-in-message"),
     shortcutPreview: document.querySelector("#shortcut-preview"),
     expansionPreview: document.querySelector("#expansion-preview"),
     managerTest: document.querySelector("#manager-test"),
@@ -62,6 +88,31 @@
     saveButton: document.querySelector("#save-command"),
     duplicateButton: document.querySelector("#duplicate-command"),
     deleteButton: document.querySelector("#delete-command"),
+    toggleSelection: document.querySelector("#toggle-selection"),
+    bulkActions: document.querySelector("#bulk-actions"),
+    bulkSelectedCount: document.querySelector("#bulk-selected-count"),
+    bulkMove: document.querySelector("#bulk-move"),
+    bulkDelete: document.querySelector("#bulk-delete"),
+    clearSelection: document.querySelector("#clear-selection"),
+    bulkMoveDialog: document.querySelector("#bulk-move-dialog"),
+    bulkMoveForm: document.querySelector("#bulk-move-form"),
+    bulkMoveSubtitle: document.querySelector("#bulk-move-subtitle"),
+    bulkMoveSection: document.querySelector("#bulk-move-section"),
+    bulkMoveMessage: document.querySelector("#bulk-move-message"),
+    bulkDeleteDialog: document.querySelector("#bulk-delete-dialog"),
+    bulkDeleteTitle: document.querySelector("#bulk-delete-title"),
+    bulkDeletePreview: document.querySelector("#bulk-delete-preview"),
+    bulkDeleteMessage: document.querySelector("#bulk-delete-message"),
+    sectionDeleteDialog: document.querySelector("#section-delete-dialog"),
+    sectionDeleteForm: document.querySelector("#section-delete-form"),
+    sectionDeleteTitle: document.querySelector("#section-delete-title"),
+    sectionDeleteSubtitle: document.querySelector("#section-delete-subtitle"),
+    sectionDeleteOptions: document.querySelector("#section-delete-options"),
+    sectionDeleteCommandsLabel: document.querySelector("#section-delete-commands-label"),
+    sectionDeleteMessage: document.querySelector("#section-delete-message"),
+    undoToast: document.querySelector("#undo-toast"),
+    undoMessage: document.querySelector("#undo-message"),
+    undoAction: document.querySelector("#undo-action"),
     sectionForm: document.querySelector("#section-form"),
     sectionName: document.querySelector("#section-name"),
     sectionMessage: document.querySelector("#section-message"),
@@ -73,14 +124,25 @@
   let isNew = false;
   let isDuplicate = false;
   let isDashboard = true;
-  let draggedCommandId = null;
+  let isSelectionMode = false;
+  let draggedCommandIds = [];
+  let selectionAnchorId = null;
+  let pendingBulkMoveIds = [];
+  let pendingBulkDeleteIds = [];
+  let pendingSectionDeleteId = null;
+  let undoOperation = null;
+  let undoTimer = null;
   let usageStats = {};
   let formulaSelectionStart = 0;
   let formulaSelectionEnd = 0;
+  let templateSelectionStart = 0;
+  let templateSelectionEnd = 0;
+  let pendingManagerExpansion = null;
   let savedCommandSignature = null;
   let showSavedState = false;
   let pendingImport = null;
   const collapsedSections = new Set();
+  const selectedCommandIds = new Set();
   const UNUSED_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
 
   function saveCollapsedSections() {
@@ -94,6 +156,13 @@
       lastUsedAt: Number.isFinite(candidate.lastUsedAt) ? candidate.lastUsedAt : null,
       trackedSince: Number.isFinite(candidate.trackedSince) ? candidate.trackedSince : fallbackTime
     };
+  }
+
+  function cleanImportedUsageEntry(entry, fallbackTime) {
+    if (!entry || typeof entry !== "object") return null;
+    const clean = cleanUsageEntry(entry, fallbackTime);
+    clean.count = Math.min(Number.MAX_SAFE_INTEGER, Math.floor(clean.count));
+    return clean;
   }
 
   async function loadUsageStats() {
@@ -305,7 +374,7 @@
   }
 
   function updatePreview() {
-    const resolved = SlashTemplate.resolveTemplate(elements.expansion.value);
+    const resolved = SlashTemplate.resolveTemplate(elements.expansion.value, { useDefaults: true });
     elements.shortcutPreview.textContent = currentShortcut() || "/command";
     elements.expansionPreview.textContent = previewText(resolved.value, 90) || "Your saved text appears here.";
     elements.formulaStatus.classList.toggle("is-error", resolved.errors.length > 0);
@@ -345,6 +414,105 @@
     elements.formulaDialog.showModal();
   }
 
+  function buildTemplateFieldToken({ validate = false } = {}) {
+    const type = elements.templateFieldType.value;
+    if (type === "cursor") return "{{cursor}}";
+    const label = elements.templateFieldLabel.value.trim();
+    if (!label || /[{}|]/u.test(label)) {
+      if (validate) throw new Error("Enter a label without braces or | characters.");
+      const placeholders = {
+        choice: "{{choice:Label|Option}}",
+        multiline: "{{multiline:Label}}",
+        datefield: "{{datefield:Label}}",
+        toggle: "{{toggle:Label|Optional text}}"
+      };
+      return placeholders[type] || "{{field:Label}}";
+    }
+    if (type === "choice") {
+      const choices = [...new Set(elements.templateFieldOptions.value
+        .split(/\r?\n/u)
+        .map((choice) => choice.trim())
+        .filter(Boolean))];
+      if (validate && (!choices.length || choices.some((choice) => /[{}|]/u.test(choice)))) {
+        throw new Error("Add at least one option per line without braces or | characters.");
+      }
+      return `{{choice:${label}|${choices.length ? choices.join("|") : "Option"}}}`;
+    }
+    if (type === "toggle") {
+      const insertValue = elements.templateFieldToggleContent.value.trim();
+      if (validate && (!insertValue || /[{}]/u.test(insertValue) || /(?:^|\|)!checked$/u.test(insertValue))) {
+        throw new Error("Add optional text without braces or the reserved !checked marker.");
+      }
+      return `{{toggle:${label}|${insertValue || "Optional text"}${elements.templateFieldToggleChecked.checked ? "|!checked" : ""}}}`;
+    }
+
+    const defaultValue = type === "multiline"
+      ? elements.templateFieldMultiline.value.trim()
+      : type === "datefield"
+        ? elements.templateFieldDate.value
+        : elements.templateFieldDefault.value.trim();
+    if (validate && (/[{}]/u.test(defaultValue) || /(?:^|\|)!required$/u.test(defaultValue))) {
+      throw new Error("The default cannot contain braces or the reserved !required marker.");
+    }
+    const required = elements.templateFieldRequired.checked ? "|!required" : "";
+    return `{{${type}:${label}${defaultValue ? `|${defaultValue}` : ""}${required}}}`;
+  }
+
+  function updateTemplateFieldBuilder() {
+    const type = elements.templateFieldType.value;
+    elements.templateFieldLabelRow.hidden = type === "cursor";
+    elements.templateFieldDefaultRow.hidden = type !== "field";
+    elements.templateFieldOptionsRow.hidden = type !== "choice";
+    elements.templateFieldMultilineRow.hidden = type !== "multiline";
+    elements.templateFieldDateRow.hidden = type !== "datefield";
+    elements.templateFieldToggleContentRow.hidden = type !== "toggle";
+    elements.templateFieldRequiredRow.hidden = !["field", "multiline", "datefield"].includes(type);
+    elements.templateFieldToggleCheckedRow.hidden = type !== "toggle";
+    elements.templateFieldPreview.textContent = buildTemplateFieldToken();
+    elements.templateFieldMessage.textContent = "";
+  }
+
+  function openTemplateFieldBuilder() {
+    templateSelectionStart = Number.isInteger(elements.expansion.selectionStart)
+      ? elements.expansion.selectionStart
+      : elements.expansion.value.length;
+    templateSelectionEnd = Number.isInteger(elements.expansion.selectionEnd)
+      ? elements.expansion.selectionEnd
+      : templateSelectionStart;
+    const selectedText = elements.expansion.value.slice(templateSelectionStart, templateSelectionEnd).trim();
+    elements.templateFieldType.value = "field";
+    elements.templateFieldLabel.value = "";
+    elements.templateFieldDefault.value = selectedText.length <= 200 && !/[{}]/u.test(selectedText) ? selectedText : "";
+    elements.templateFieldOptions.value = "";
+    elements.templateFieldMultiline.value = selectedText.length <= 2000 && !/[{}]/u.test(selectedText) ? selectedText : "";
+    elements.templateFieldDate.value = "";
+    elements.templateFieldToggleContent.value = selectedText.length <= 2000 && !/[{}]/u.test(selectedText) ? selectedText : "";
+    elements.templateFieldRequired.checked = false;
+    elements.templateFieldToggleChecked.checked = false;
+    updateTemplateFieldBuilder();
+    elements.templateFieldDialog.showModal();
+    queueMicrotask(() => elements.templateFieldLabel.focus());
+  }
+
+  function closeTemplateFieldBuilder() {
+    elements.templateFieldDialog.close();
+    elements.templateFieldMessage.textContent = "";
+  }
+
+  function insertTemplateField() {
+    try {
+      const token = buildTemplateFieldToken({ validate: true });
+      elements.expansion.setRangeText(token, templateSelectionStart, templateSelectionEnd, "end");
+      const caret = templateSelectionStart + token.length;
+      elements.expansion.dispatchEvent(new Event("input", { bubbles: true }));
+      closeTemplateFieldBuilder();
+      elements.expansion.focus();
+      elements.expansion.setSelectionRange(caret, caret);
+    } catch (error) {
+      elements.templateFieldMessage.textContent = error.message || "Could not create that fill-in.";
+    }
+  }
+
   function renderSectionSelect(selectedSectionId = null) {
     elements.section.replaceChildren();
     const unfiled = document.createElement("option");
@@ -360,21 +528,102 @@
     elements.section.value = state.sections.some((section) => section.id === selectedSectionId) ? selectedSectionId : "";
   }
 
+  function renderManagerFillInFields(fields) {
+    elements.fillInFields.replaceChildren();
+    fields.forEach((field, index) => {
+      const label = document.createElement("label");
+      const text = document.createElement("span");
+      text.textContent = `${field.label}${field.required ? " *" : ""}`;
+      let control;
+      if (field.type === "toggle") {
+        label.className = "fill-in-toggle";
+        control = document.createElement("input");
+        control.type = "checkbox";
+        control.checked = field.defaultValue === true;
+        const copy = document.createElement("span");
+        copy.className = "fill-in-toggle-copy";
+        const preview = document.createElement("small");
+        preview.textContent = field.insertValue;
+        copy.append(text, preview);
+        label.append(control, copy);
+      } else if (field.type === "choice") {
+        label.className = "formula-field";
+        control = document.createElement("select");
+        field.choices.forEach((choice) => {
+          const option = document.createElement("option");
+          option.value = choice;
+          option.textContent = choice;
+          control.append(option);
+        });
+      } else if (field.type === "multiline") {
+        label.className = "formula-field";
+        control = document.createElement("textarea");
+        control.rows = 3;
+        control.value = field.defaultValue;
+      } else if (field.type === "datefield") {
+        label.className = "formula-field";
+        control = document.createElement("input");
+        control.type = "date";
+        control.value = field.defaultValue;
+      } else {
+        label.className = "formula-field";
+        control = document.createElement("input");
+        control.type = "text";
+        control.value = field.defaultValue;
+        control.autocomplete = "off";
+      }
+      control.dataset.fieldIndex = String(index);
+      control.required = field.required === true;
+      if (field.required) control.setAttribute("aria-required", "true");
+      control.addEventListener("input", () => {
+        control.removeAttribute("aria-invalid");
+        elements.fillInMessage.textContent = "";
+      });
+      if (field.type !== "toggle") label.append(text, control);
+      elements.fillInFields.append(label);
+    });
+  }
+
+  function closeManagerFillIn() {
+    const caret = pendingManagerExpansion?.caret;
+    pendingManagerExpansion = null;
+    elements.fillInDialog.close();
+    elements.fillInMessage.textContent = "";
+    elements.managerTest.focus();
+    if (Number.isInteger(caret)) elements.managerTest.setSelectionRange(caret, caret);
+  }
+
+  function applyManagerExpansion(request, values = undefined) {
+    const result = SlashExpansion.expandText({
+      text: request.text,
+      caret: request.caret,
+      command: request.command,
+      key: request.key,
+      multiline: true,
+      values
+    });
+    if (!result) return false;
+    elements.managerTest.focus();
+    elements.managerTest.setRangeText(result.insertion, result.start, result.end, "end");
+    elements.managerTest.setSelectionRange(result.start + result.cursorOffset, result.start + result.cursorOffset);
+    elements.managerTest.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: result.insertion }));
+    return true;
+  }
+
   function expandManagerTest(key) {
     if (elements.managerTest.selectionStart !== elements.managerTest.selectionEnd) return false;
     const caret = elements.managerTest.selectionStart;
     const command = SlashExpansion.findMatchingCommand(elements.managerTest.value.slice(0, caret), state.commands);
     if (!command) return false;
-    const result = SlashExpansion.expandText({
-      text: elements.managerTest.value,
-      caret,
-      command,
-      key,
-      multiline: true
-    });
-    if (!result) return false;
-    elements.managerTest.setRangeText(result.insertion, result.start, result.end, "end");
-    elements.managerTest.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: result.insertion }));
+    const request = { text: elements.managerTest.value, caret, command, key };
+    const analysis = SlashTemplate.analyzeTemplate(command.expansion);
+    if (!analysis.fields.length) return applyManagerExpansion(request);
+    pendingManagerExpansion = { ...request, fields: analysis.fields };
+    elements.fillInSubtitle.textContent = command.shortcut;
+    elements.fillInMessage.textContent = "";
+    renderManagerFillInFields(analysis.fields);
+    elements.fillInDialog.showModal();
+    queueMicrotask(() => elements.fillInFields.querySelector("input, select, textarea")?.focus());
     return true;
   }
 
@@ -478,35 +727,203 @@
     return button;
   }
 
+  function getVisibleCommands() {
+    const term = elements.search.value.trim().toLowerCase();
+    if (!term) return [...state.commands];
+    const sectionNames = new Map(state.sections.map((section) => [section.id, section.name.toLowerCase()]));
+    return state.commands.filter((command) => command.shortcut.toLowerCase().includes(term)
+      || command.expansion.toLowerCase().includes(term)
+      || (sectionNames.get(command.sectionId) || "general").includes(term));
+  }
+
+  function getVisibleCommandsInDisplayOrder() {
+    const visible = getVisibleCommands();
+    const ordered = [];
+    ordered.push(...visible.filter((command) => !command.sectionId).sort(compareCommandsByName));
+    state.sections.forEach((section) => {
+      ordered.push(...visible.filter((command) => command.sectionId === section.id).sort(compareCommandsByName));
+    });
+    return ordered;
+  }
+
+  function updateBulkActionBar() {
+    const currentIds = new Set(state.commands.map((command) => command.id));
+    [...selectedCommandIds].forEach((id) => {
+      if (!currentIds.has(id)) selectedCommandIds.delete(id);
+    });
+    const selectedCount = selectedCommandIds.size;
+    document.body.classList.toggle("is-selection-mode", isSelectionMode);
+    elements.toggleSelection.textContent = isSelectionMode ? "Done" : "Select";
+    elements.toggleSelection.setAttribute("aria-pressed", String(isSelectionMode));
+    elements.toggleSelection.disabled = !isSelectionMode && state.commands.length === 0;
+    elements.bulkActions.hidden = !isSelectionMode;
+    elements.bulkSelectedCount.textContent = String(selectedCount);
+    elements.bulkMove.disabled = selectedCount === 0;
+    elements.bulkDelete.disabled = selectedCount === 0;
+    elements.clearSelection.disabled = selectedCount === 0;
+  }
+
+  function setSelectionMode(enabled) {
+    isSelectionMode = Boolean(enabled);
+    selectionAnchorId = null;
+    if (isSelectionMode && !elements.sectionForm.hidden) {
+      elements.sectionForm.hidden = true;
+      elements.sectionName.value = "";
+      elements.sectionMessage.textContent = "";
+    }
+    if (!isSelectionMode) selectedCommandIds.clear();
+    renderList();
+  }
+
+  function toggleCommandSelection(commandId, { selected, range = false } = {}) {
+    if (!state.commands.some((command) => command.id === commandId)) return;
+    const shouldSelect = typeof selected === "boolean" ? selected : !selectedCommandIds.has(commandId);
+    if (range && selectionAnchorId) {
+      const orderedIds = getVisibleCommandsInDisplayOrder().map((command) => command.id);
+      const anchorIndex = orderedIds.indexOf(selectionAnchorId);
+      const commandIndex = orderedIds.indexOf(commandId);
+      if (anchorIndex >= 0 && commandIndex >= 0) {
+        const start = Math.min(anchorIndex, commandIndex);
+        const end = Math.max(anchorIndex, commandIndex);
+        orderedIds.slice(start, end + 1).forEach((id) => {
+          if (shouldSelect) selectedCommandIds.add(id);
+          else selectedCommandIds.delete(id);
+        });
+      } else if (shouldSelect) selectedCommandIds.add(commandId);
+      else selectedCommandIds.delete(commandId);
+    } else if (shouldSelect) selectedCommandIds.add(commandId);
+    else selectedCommandIds.delete(commandId);
+    selectionAnchorId = commandId;
+    renderList();
+  }
+
+  function toggleCommandGroup(commands, selected) {
+    commands.forEach((command) => {
+      if (selected) selectedCommandIds.add(command.id);
+      else selectedCommandIds.delete(command.id);
+    });
+    selectionAnchorId = commands.at(-1)?.id || selectionAnchorId;
+    renderList();
+  }
+
+  async function captureUsageEntries(commandIds) {
+    const ids = new Set(commandIds);
+    const stored = await chrome.storage.local.get(["usageStats"]);
+    const current = stored.usageStats && typeof stored.usageStats === "object" ? stored.usageStats : {};
+    const captured = {};
+    ids.forEach((id) => {
+      if (Object.prototype.hasOwnProperty.call(current, id)) captured[id] = current[id];
+    });
+    return captured;
+  }
+
+  async function removeUsageEntries(commandIds) {
+    const ids = new Set(commandIds);
+    const stored = await chrome.storage.local.get(["usageStats"]);
+    const current = stored.usageStats && typeof stored.usageStats === "object" ? stored.usageStats : {};
+    const next = { ...current };
+    ids.forEach((id) => {
+      delete next[id];
+    });
+    usageStats = next;
+    await chrome.storage.local.set({ usageStats: next });
+  }
+
+  async function restoreUsageEntries(entries) {
+    if (!entries || !Object.keys(entries).length) return;
+    const stored = await chrome.storage.local.get(["usageStats"]);
+    const current = stored.usageStats && typeof stored.usageStats === "object" ? stored.usageStats : {};
+    usageStats = { ...current, ...entries };
+    await chrome.storage.local.set({ usageStats });
+  }
+
+  function mergeRestoredCommands(currentCommands, originalCommands, restoredCommandIds) {
+    const currentById = new Map(currentCommands.map((command) => [command.id, command]));
+    const restoredIds = new Set(restoredCommandIds);
+    const originalIds = new Set(originalCommands.map((command) => command.id));
+    const merged = originalCommands.flatMap((command) => {
+      if (currentById.has(command.id)) return [currentById.get(command.id)];
+      return restoredIds.has(command.id) ? [command] : [];
+    });
+    currentCommands.forEach((command) => {
+      if (!originalIds.has(command.id)) merged.push(command);
+    });
+    return merged;
+  }
+
+  function dismissUndo() {
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = null;
+    undoOperation = null;
+    elements.undoToast.hidden = true;
+    elements.undoAction.disabled = false;
+  }
+
+  function offerUndo(message, operation) {
+    dismissUndo();
+    undoOperation = operation;
+    elements.undoMessage.textContent = message;
+    elements.undoToast.hidden = false;
+    undoTimer = setTimeout(dismissUndo, 12000);
+  }
+
   function clearDropTargets() {
     document.querySelectorAll(".command-section-group.is-drop-target").forEach((group) => {
       group.classList.remove("is-drop-target");
+      delete group.dataset.dropMessage;
     });
   }
 
-  async function moveCommandToSection(commandId, requestedSectionId) {
-    const command = state.commands.find((candidate) => candidate.id === commandId);
-    if (!command) return;
+  async function moveCommandsToSection(commandIds, requestedSectionId) {
+    const requestedIds = new Set(commandIds);
     const sectionId = state.sections.some((section) => section.id === requestedSectionId) ? requestedSectionId : null;
-    if (command.sectionId === sectionId) return;
+    const commands = state.commands.filter((command) => requestedIds.has(command.id) && command.sectionId !== sectionId);
+    if (!commands.length) {
+      const destination = state.sections.find((section) => section.id === sectionId)?.name || "General";
+      announce(`The selected command${commandIds.length === 1 ? " is" : "s are"} already in ${destination}.`);
+      return false;
+    }
+    const movedIds = new Set(commands.map((command) => command.id));
+    const previousSections = new Map(commands.map((command) => [command.id, command.sectionId || null]));
+    const destination = state.sections.find((section) => section.id === sectionId)?.name || "General";
 
     try {
       state = await SlashStore.saveState({
         ...state,
-        commands: state.commands.map((candidate) => candidate.id === commandId
+        commands: state.commands.map((candidate) => movedIds.has(candidate.id)
           ? { ...candidate, sectionId }
           : candidate)
       });
-      if (!isDashboard && selectedId === commandId) {
+      if (!isDashboard && movedIds.has(selectedId)) {
         elements.section.value = sectionId || "";
-        savedCommandSignature = commandSignature(state.commands.find((candidate) => candidate.id === commandId));
+        savedCommandSignature = commandSignature(state.commands.find((candidate) => candidate.id === selectedId));
       }
       await refresh();
-      const destination = state.sections.find((section) => section.id === sectionId)?.name || "General";
-      announce(`Moved ${command.shortcut} to ${destination}.`);
+      const count = commands.length;
+      const message = count === 1
+        ? `Moved ${commands[0].shortcut} to ${destination}.`
+        : `Moved ${count} commands to ${destination}.`;
+      announce(message);
+      offerUndo(message, async () => {
+        const latest = await SlashStore.getState();
+        state = await SlashStore.saveState({
+          ...latest,
+          commands: latest.commands.map((command) => previousSections.has(command.id)
+            ? { ...command, sectionId: previousSections.get(command.id) }
+            : command)
+        });
+        if (!isDashboard && previousSections.has(selectedId)) {
+          elements.section.value = previousSections.get(selectedId) || "";
+          savedCommandSignature = commandSignature(state.commands.find((command) => command.id === selectedId));
+        }
+        await refresh();
+        announce(`Undid move of ${count} command${count === 1 ? "" : "s"}.`);
+      });
+      return true;
     } catch (error) {
-      announce(error.message || "Could not move this command.", true);
+      announce(error.message || "Could not move the selected commands.", true);
       await refresh();
+      return false;
     }
   }
 
@@ -518,11 +935,32 @@
     const row = document.createElement("button");
     row.type = "button";
     row.className = "options-command-row";
+    row.dataset.commandId = command.id;
     row.draggable = true;
-    row.title = "Drag to move this command to another section";
+    const isBulkSelected = selectedCommandIds.has(command.id);
+    row.title = isBulkSelected && selectedCommandIds.size > 1
+      ? `Drag to move ${selectedCommandIds.size} selected commands`
+      : "Drag to move this command to another section";
     row.classList.toggle("is-selected", !isDashboard && !isNew && command.id === selectedId);
-    row.setAttribute("aria-pressed", String(!isDashboard && !isNew && command.id === selectedId));
-    row.setAttribute("aria-label", conflictMessage ? `Edit ${command.shortcut}. ${conflictMessage}` : `Edit ${command.shortcut}`);
+    row.classList.toggle("is-bulk-selected", isSelectionMode && isBulkSelected);
+    row.setAttribute("aria-pressed", String(isSelectionMode
+      ? isBulkSelected
+      : !isDashboard && !isNew && command.id === selectedId));
+    const actionLabel = isSelectionMode ? `${isBulkSelected ? "Deselect" : "Select"} ${command.shortcut}` : `Edit ${command.shortcut}`;
+    row.setAttribute("aria-label", conflictMessage ? `${actionLabel}. ${conflictMessage}` : actionLabel);
+
+    const shell = document.createElement("div");
+    shell.className = "command-row-shell";
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "command-select-checkbox";
+    checkbox.checked = isBulkSelected;
+    checkbox.tabIndex = isSelectionMode ? 0 : -1;
+    checkbox.setAttribute("aria-label", `Select ${command.shortcut}`);
+    checkbox.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleCommandSelection(command.id, { selected: checkbox.checked, range: event.shiftKey });
+    });
 
     const shortcut = document.createElement("span");
     shortcut.className = "options-command-shortcut";
@@ -541,21 +979,32 @@
 
     row.append(shortcut, expansion, conflict);
     row.insertAdjacentHTML("beforeend", chevron);
-    row.addEventListener("click", () => selectCommand(command.id));
+    row.addEventListener("click", (event) => {
+      if (isSelectionMode) toggleCommandSelection(command.id, { range: event.shiftKey });
+      else selectCommand(command.id);
+    });
     row.addEventListener("dragstart", (event) => {
-      draggedCommandId = command.id;
+      draggedCommandIds = isSelectionMode && selectedCommandIds.has(command.id)
+        ? [...selectedCommandIds]
+        : [command.id];
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", command.id);
-      row.classList.add("is-dragging");
+      const draggedIds = new Set(draggedCommandIds);
+      document.querySelectorAll(".options-command-row[data-command-id]").forEach((candidate) => {
+        candidate.classList.toggle("is-dragging", draggedIds.has(candidate.dataset.commandId));
+      });
       document.body.classList.add("is-command-dragging");
     });
     row.addEventListener("dragend", () => {
-      draggedCommandId = null;
-      row.classList.remove("is-dragging");
+      draggedCommandIds = [];
+      document.querySelectorAll(".options-command-row.is-dragging").forEach((candidate) => {
+        candidate.classList.remove("is-dragging");
+      });
       document.body.classList.remove("is-command-dragging");
       clearDropTargets();
     });
-    container.append(row);
+    shell.append(checkbox, row);
+    container.append(shell);
   }
 
   function appendSectionGroup(section, commands) {
@@ -567,26 +1016,43 @@
     group.classList.toggle("is-collapsed", isCollapsed);
     group.dataset.sectionId = sectionKey;
     group.addEventListener("dragover", (event) => {
-      if (!draggedCommandId) return;
+      if (!draggedCommandIds.length) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
       clearDropTargets();
+      group.dataset.dropMessage = draggedCommandIds.length === 1
+        ? "Move command here"
+        : `Move ${draggedCommandIds.length} commands here`;
       group.classList.add("is-drop-target");
     });
     group.addEventListener("dragleave", (event) => {
-      if (!group.contains(event.relatedTarget)) group.classList.remove("is-drop-target");
+      if (!group.contains(event.relatedTarget)) {
+        group.classList.remove("is-drop-target");
+        delete group.dataset.dropMessage;
+      }
     });
     group.addEventListener("drop", (event) => {
       event.preventDefault();
-      const commandId = draggedCommandId || event.dataTransfer.getData("text/plain");
-      draggedCommandId = null;
+      const fallbackId = event.dataTransfer.getData("text/plain");
+      const commandIds = draggedCommandIds.length ? [...draggedCommandIds] : fallbackId ? [fallbackId] : [];
+      draggedCommandIds = [];
       document.body.classList.remove("is-command-dragging");
       clearDropTargets();
-      moveCommandToSection(commandId, section?.id || null);
+      if (commandIds.length) moveCommandsToSection(commandIds, section?.id || null);
     });
 
     const header = document.createElement("div");
     header.className = "command-section-header";
+    const sectionCheckbox = document.createElement("input");
+    sectionCheckbox.type = "checkbox";
+    sectionCheckbox.className = "section-select-checkbox";
+    sectionCheckbox.tabIndex = isSelectionMode ? 0 : -1;
+    sectionCheckbox.setAttribute("aria-label", `Select all commands in ${sectionName}`);
+    const selectedInSection = commands.filter((command) => selectedCommandIds.has(command.id)).length;
+    sectionCheckbox.checked = commands.length > 0 && selectedInSection === commands.length;
+    sectionCheckbox.indeterminate = selectedInSection > 0 && selectedInSection < commands.length;
+    sectionCheckbox.disabled = commands.length === 0;
+    sectionCheckbox.addEventListener("click", () => toggleCommandGroup(commands, sectionCheckbox.checked));
     const collapse = document.createElement("button");
     collapse.type = "button";
     collapse.className = "section-collapse";
@@ -620,7 +1086,7 @@
         onClick: () => deleteSection(section.id)
       }));
     }
-    header.append(collapse, actions);
+    header.append(sectionCheckbox, collapse, actions);
     group.append(header);
 
     const body = document.createElement("div");
@@ -640,16 +1106,11 @@
 
   function renderList() {
     const term = elements.search.value.trim().toLowerCase();
-    const sectionNames = new Map(state.sections.map((section) => [section.id, section.name.toLowerCase()]));
-    const visible = state.commands.filter((command) => {
-      if (!term) return true;
-      return command.shortcut.toLowerCase().includes(term)
-        || command.expansion.toLowerCase().includes(term)
-        || (sectionNames.get(command.sectionId) || "general").includes(term);
-    });
+    const visible = getVisibleCommands();
 
     elements.count.textContent = term ? `${visible.length} of ${state.commands.length}` : String(state.commands.length);
     elements.list.replaceChildren();
+    updateBulkActionBar();
 
     if (term && !visible.length) {
       const empty = document.createElement("p");
@@ -802,6 +1263,9 @@
   function selectCommand(id) {
     const command = state.commands.find((candidate) => candidate.id === id);
     if (!command) return;
+    isSelectionMode = false;
+    selectedCommandIds.clear();
+    selectionAnchorId = null;
     selectedId = id;
     isNew = false;
     isDuplicate = false;
@@ -812,14 +1276,17 @@
     history.replaceState(null, "", `?command=${encodeURIComponent(id)}`);
   }
 
-  function createCommand(sectionId = null) {
+  function createCommand(sectionId = null, expansion = "") {
+    isSelectionMode = false;
+    selectedCommandIds.clear();
+    selectionAnchorId = null;
     selectedId = null;
     isNew = true;
     isDuplicate = false;
     isDashboard = false;
     showSavedState = false;
     const validSectionId = state.sections.some((section) => section.id === sectionId) ? sectionId : null;
-    fillEditor({ shortcut: "/", expansion: "", caseSensitive: true, sectionId: validSectionId });
+    fillEditor({ shortcut: "/", expansion, caseSensitive: true, sectionId: validSectionId });
     renderList();
     elements.name.focus();
     const query = validSectionId ? `?new=1&section=${encodeURIComponent(validSectionId)}` : "?new=1";
@@ -906,27 +1373,188 @@
     else openDashboard();
   }
 
-  async function deleteSection(sectionId) {
-    const section = state.sections.find((candidate) => candidate.id === sectionId);
-    if (!section || !confirm(`Delete the ${section.name} section? Its commands will move to General.`)) return;
+  function openBulkMoveDialog() {
+    pendingBulkMoveIds = state.commands
+      .filter((command) => selectedCommandIds.has(command.id))
+      .map((command) => command.id);
+    if (!pendingBulkMoveIds.length) return;
+    const count = pendingBulkMoveIds.length;
+    elements.bulkMoveSubtitle.textContent = `Choose a destination for ${count} selected command${count === 1 ? "" : "s"}.`;
+    elements.bulkMoveSection.replaceChildren();
+    const general = document.createElement("option");
+    general.value = "";
+    general.textContent = "General";
+    elements.bulkMoveSection.append(general);
+    state.sections.forEach((section) => {
+      const option = document.createElement("option");
+      option.value = section.id;
+      option.textContent = section.name;
+      elements.bulkMoveSection.append(option);
+    });
+    elements.bulkMoveMessage.textContent = "";
+    elements.bulkMoveDialog.showModal();
+    elements.bulkMoveSection.focus();
+  }
+
+  function openBulkDeleteDialog() {
+    const selectedIds = new Set(selectedCommandIds);
+    pendingBulkDeleteIds = getVisibleCommandsInDisplayOrder()
+      .filter((command) => selectedIds.has(command.id))
+      .map((command) => command.id);
+    state.commands.forEach((command) => {
+      if (selectedIds.has(command.id) && !pendingBulkDeleteIds.includes(command.id)) pendingBulkDeleteIds.push(command.id);
+    });
+    if (!pendingBulkDeleteIds.length) return;
+
+    const commandsById = new Map(state.commands.map((command) => [command.id, command]));
+    const count = pendingBulkDeleteIds.length;
+    elements.bulkDeleteTitle.textContent = `Delete ${count} command${count === 1 ? "" : "s"}?`;
+    elements.bulkDeletePreview.replaceChildren();
+    pendingBulkDeleteIds.slice(0, 5).forEach((id) => {
+      const item = document.createElement("li");
+      item.textContent = commandsById.get(id)?.shortcut || id;
+      elements.bulkDeletePreview.append(item);
+    });
+    if (count > 5) {
+      const more = document.createElement("li");
+      more.className = "is-more";
+      more.textContent = `+ ${count - 5} more`;
+      elements.bulkDeletePreview.append(more);
+    }
+    document.querySelector("#confirm-bulk-delete").textContent = `Delete ${count} command${count === 1 ? "" : "s"}`;
+    elements.bulkDeleteMessage.textContent = "";
+    elements.bulkDeleteDialog.showModal();
+  }
+
+  async function deleteSelectedCommands() {
+    const ids = new Set(pendingBulkDeleteIds);
+    const originalCommands = [...state.commands];
+    const removedCommands = state.commands.filter((command) => ids.has(command.id));
+    if (!removedCommands.length) {
+      elements.bulkDeleteDialog.close();
+      return;
+    }
+
     try {
+      const removedUsage = await captureUsageEntries(ids);
+      state = await SlashStore.saveState({
+        ...state,
+        commands: state.commands.filter((command) => !ids.has(command.id))
+      });
+      await removeUsageEntries(ids);
+      ids.forEach((id) => selectedCommandIds.delete(id));
+      pendingBulkDeleteIds = [];
+      elements.bulkDeleteDialog.close();
+      await refresh();
+      const count = removedCommands.length;
+      const message = `Deleted ${count} command${count === 1 ? "" : "s"}.`;
+      announce(message);
+      offerUndo(message, async () => {
+        const latest = await SlashStore.getState();
+        await restoreUsageEntries(removedUsage);
+        try {
+          state = await SlashStore.saveState({
+            ...latest,
+            commands: mergeRestoredCommands(latest.commands, originalCommands, ids)
+          });
+        } catch (error) {
+          await removeUsageEntries(ids);
+          throw error;
+        }
+        if (isSelectionMode) ids.forEach((id) => selectedCommandIds.add(id));
+        await refresh();
+        announce(`Restored ${count} command${count === 1 ? "" : "s"}.`);
+      });
+    } catch (error) {
+      elements.bulkDeleteMessage.textContent = error.message || "Could not delete the selected commands.";
+      await refresh();
+    }
+  }
+
+  function deleteSection(sectionId) {
+    const section = state.sections.find((candidate) => candidate.id === sectionId);
+    if (!section) return;
+    const sectionCommands = state.commands.filter((command) => command.sectionId === sectionId);
+    pendingSectionDeleteId = sectionId;
+    elements.sectionDeleteTitle.textContent = `Delete “${section.name}”?`;
+    elements.sectionDeleteSubtitle.textContent = sectionCommands.length
+      ? `This section contains ${sectionCommands.length} command${sectionCommands.length === 1 ? "" : "s"}.`
+      : "This section is empty.";
+    elements.sectionDeleteOptions.hidden = sectionCommands.length === 0;
+    elements.sectionDeleteCommandsLabel.textContent = `Delete ${sectionCommands.length} command${sectionCommands.length === 1 ? "" : "s"} too`;
+    const keepOption = elements.sectionDeleteForm.querySelector("input[value='keep']");
+    keepOption.checked = true;
+    elements.sectionDeleteMessage.textContent = "";
+    elements.sectionDeleteDialog.showModal();
+  }
+
+  async function executeSectionDelete() {
+    const sectionId = pendingSectionDeleteId;
+    const section = state.sections.find((candidate) => candidate.id === sectionId);
+    if (!section) {
+      elements.sectionDeleteDialog.close();
+      return;
+    }
+    const originalCommands = [...state.commands];
+    const sectionCommands = state.commands.filter((command) => command.sectionId === sectionId);
+    const commandIds = new Set(sectionCommands.map((command) => command.id));
+    const requestedAction = new FormData(elements.sectionDeleteForm).get("section-delete-action");
+    const deleteCommands = sectionCommands.length > 0 && requestedAction === "delete";
+    const sectionIndex = state.sections.findIndex((candidate) => candidate.id === sectionId);
+    const wasCollapsed = collapsedSections.has(sectionId);
+
+    try {
+      const removedUsage = deleteCommands ? await captureUsageEntries(commandIds) : {};
       state = await SlashStore.saveState({
         ...state,
         sections: state.sections.filter((candidate) => candidate.id !== sectionId),
-        commands: state.commands.map((command) => command.sectionId === sectionId
-          ? { ...command, sectionId: null }
-          : command)
+        commands: deleteCommands
+          ? state.commands.filter((command) => !commandIds.has(command.id))
+          : state.commands.map((command) => commandIds.has(command.id) ? { ...command, sectionId: null } : command)
       });
-      if (!isDashboard && elements.section.value === sectionId) {
+      if (deleteCommands) await removeUsageEntries(commandIds);
+      if (deleteCommands) commandIds.forEach((id) => selectedCommandIds.delete(id));
+      if (!isDashboard && !deleteCommands && elements.section.value === sectionId) {
         elements.section.value = "";
         if (!isNew) savedCommandSignature = commandSignature(state.commands.find((command) => command.id === selectedId));
       }
       collapsedSections.delete(sectionId);
       saveCollapsedSections();
+      pendingSectionDeleteId = null;
+      elements.sectionDeleteDialog.close();
       await refresh();
-      announce(`Deleted ${section.name}. Its commands are now in General.`);
+      const message = deleteCommands
+        ? `Deleted ${section.name} and ${sectionCommands.length} command${sectionCommands.length === 1 ? "" : "s"}.`
+        : sectionCommands.length
+          ? `Deleted ${section.name}. Its commands are now in General.`
+          : `Deleted ${section.name}.`;
+      announce(message);
+      offerUndo(message, async () => {
+        const latest = await SlashStore.getState();
+        const nextSections = [...latest.sections];
+        if (!nextSections.some((candidate) => candidate.id === section.id)) {
+          nextSections.splice(Math.min(sectionIndex, nextSections.length), 0, section);
+        }
+        const nextCommands = deleteCommands
+          ? mergeRestoredCommands(latest.commands, originalCommands, commandIds)
+          : latest.commands.map((command) => commandIds.has(command.id) ? { ...command, sectionId } : command);
+        await restoreUsageEntries(removedUsage);
+        try {
+          state = await SlashStore.saveState({ ...latest, sections: nextSections, commands: nextCommands });
+        } catch (error) {
+          if (deleteCommands) await removeUsageEntries(commandIds);
+          throw error;
+        }
+        if (deleteCommands && isSelectionMode) commandIds.forEach((id) => selectedCommandIds.add(id));
+        if (wasCollapsed) collapsedSections.add(sectionId);
+        saveCollapsedSections();
+        if (!isDashboard && commandIds.has(selectedId)) elements.section.value = sectionId;
+        await refresh();
+        announce(`Restored ${section.name}.`);
+      });
     } catch (error) {
-      announce(error.message || "Could not delete this section.", true);
+      elements.sectionDeleteMessage.textContent = error.message || "Could not delete this section.";
+      await refresh();
     }
   }
 
@@ -945,7 +1573,7 @@
     }
     const formulaResult = SlashTemplate.resolveTemplate(expansion);
     if (formulaResult.errors.length) {
-      announce(`Fix the date formula: ${formulaResult.errors[0].message}`, true);
+      announce(`Fix the template: ${formulaResult.errors[0].message}`, true);
       elements.expansion.focus();
       return;
     }
@@ -998,6 +1626,76 @@
   });
   elements.duplicateButton.addEventListener("click", duplicateSelectedCommand);
 
+  elements.toggleSelection.addEventListener("click", () => setSelectionMode(!isSelectionMode));
+  elements.clearSelection.addEventListener("click", () => {
+    selectedCommandIds.clear();
+    selectionAnchorId = null;
+    renderList();
+  });
+  elements.bulkMove.addEventListener("click", openBulkMoveDialog);
+  elements.bulkDelete.addEventListener("click", openBulkDeleteDialog);
+
+  elements.bulkMoveForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const commandIds = [...pendingBulkMoveIds];
+    const sectionId = elements.bulkMoveSection.value || null;
+    pendingBulkMoveIds = [];
+    elements.bulkMoveDialog.close();
+    await moveCommandsToSection(commandIds, sectionId);
+  });
+  document.querySelector("#close-bulk-move").addEventListener("click", () => elements.bulkMoveDialog.close());
+  document.querySelector("#cancel-bulk-move").addEventListener("click", () => elements.bulkMoveDialog.close());
+  elements.bulkMoveDialog.addEventListener("close", () => {
+    pendingBulkMoveIds = [];
+    elements.bulkMoveMessage.textContent = "";
+  });
+  elements.bulkMoveDialog.addEventListener("click", (event) => {
+    if (event.target === elements.bulkMoveDialog) elements.bulkMoveDialog.close();
+  });
+
+  document.querySelector("#confirm-bulk-delete").addEventListener("click", deleteSelectedCommands);
+  document.querySelector("#close-bulk-delete").addEventListener("click", () => elements.bulkDeleteDialog.close());
+  document.querySelector("#cancel-bulk-delete").addEventListener("click", () => elements.bulkDeleteDialog.close());
+  elements.bulkDeleteDialog.addEventListener("close", () => {
+    pendingBulkDeleteIds = [];
+    elements.bulkDeleteMessage.textContent = "";
+  });
+  elements.bulkDeleteDialog.addEventListener("click", (event) => {
+    if (event.target === elements.bulkDeleteDialog) elements.bulkDeleteDialog.close();
+  });
+
+  elements.sectionDeleteForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await executeSectionDelete();
+  });
+  document.querySelector("#close-section-delete").addEventListener("click", () => elements.sectionDeleteDialog.close());
+  document.querySelector("#cancel-section-delete").addEventListener("click", () => elements.sectionDeleteDialog.close());
+  elements.sectionDeleteDialog.addEventListener("close", () => {
+    pendingSectionDeleteId = null;
+    elements.sectionDeleteMessage.textContent = "";
+  });
+  elements.sectionDeleteDialog.addEventListener("click", (event) => {
+    if (event.target === elements.sectionDeleteDialog) elements.sectionDeleteDialog.close();
+  });
+
+  elements.undoAction.addEventListener("click", async () => {
+    const operation = undoOperation;
+    if (!operation) return;
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = null;
+    undoOperation = null;
+    elements.undoAction.disabled = true;
+    try {
+      await operation();
+      elements.undoToast.hidden = true;
+    } catch (error) {
+      elements.undoMessage.textContent = error.message || "Could not undo that change.";
+      elements.undoAction.disabled = true;
+      announce(error.message || "Could not undo that change.", true);
+    }
+  });
+  document.querySelector("#dismiss-undo").addEventListener("click", dismissUndo);
+
   document.querySelector("#create-command").addEventListener("click", () => createCommand());
   document.querySelector("#dashboard-create-command").addEventListener("click", () => createCommand());
   document.querySelector("#close-editor").addEventListener("click", () => openDashboard());
@@ -1037,6 +1735,12 @@
   });
 
   elements.search.addEventListener("input", renderList);
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !isSelectionMode || document.querySelector("dialog[open]")) return;
+    event.preventDefault();
+    setSelectionMode(false);
+    elements.toggleSelection.focus();
+  });
   elements.dashboardViewUsage.addEventListener("click", () => {
     renderUsageDialog();
     elements.usageDialog.showModal();
@@ -1053,6 +1757,25 @@
   elements.name.addEventListener("input", updatePreview);
   elements.caseSensitive.addEventListener("change", updateShortcutConflictWarning);
   elements.expansion.addEventListener("input", updatePreview);
+  document.querySelector("#open-template-field").addEventListener("click", openTemplateFieldBuilder);
+  document.querySelector("#close-template-field").addEventListener("click", closeTemplateFieldBuilder);
+  document.querySelector("#cancel-template-field").addEventListener("click", closeTemplateFieldBuilder);
+  elements.templateFieldDialog.addEventListener("click", (event) => {
+    if (event.target === elements.templateFieldDialog) closeTemplateFieldBuilder();
+  });
+  elements.templateFieldType.addEventListener("change", updateTemplateFieldBuilder);
+  elements.templateFieldLabel.addEventListener("input", updateTemplateFieldBuilder);
+  elements.templateFieldDefault.addEventListener("input", updateTemplateFieldBuilder);
+  elements.templateFieldOptions.addEventListener("input", updateTemplateFieldBuilder);
+  elements.templateFieldMultiline.addEventListener("input", updateTemplateFieldBuilder);
+  elements.templateFieldDate.addEventListener("input", updateTemplateFieldBuilder);
+  elements.templateFieldToggleContent.addEventListener("input", updateTemplateFieldBuilder);
+  elements.templateFieldRequired.addEventListener("change", updateTemplateFieldBuilder);
+  elements.templateFieldToggleChecked.addEventListener("change", updateTemplateFieldBuilder);
+  elements.templateFieldForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    insertTemplateField();
+  });
   document.querySelector("#open-formula").addEventListener("click", openFormulaBuilder);
   document.querySelector("#close-formula").addEventListener("click", () => elements.formulaDialog.close());
   document.querySelector("#cancel-formula").addEventListener("click", () => elements.formulaDialog.close());
@@ -1064,6 +1787,40 @@
     event.preventDefault();
     insertFormula(buildSelectedPresetToken());
   });
+  document.querySelector("#close-fill-in").addEventListener("click", closeManagerFillIn);
+  document.querySelector("#cancel-fill-in").addEventListener("click", closeManagerFillIn);
+  elements.fillInDialog.addEventListener("click", (event) => {
+    if (event.target === elements.fillInDialog) closeManagerFillIn();
+  });
+  elements.fillInDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeManagerFillIn();
+  });
+  elements.fillInForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!pendingManagerExpansion) return;
+    const values = Object.create(null);
+    pendingManagerExpansion.fields.forEach((field, index) => {
+      const control = elements.fillInFields.querySelector(`[data-field-index="${index}"]`);
+      values[field.label] = field.type === "toggle" ? Boolean(control?.checked) : control?.value || "";
+    });
+    const resolved = SlashExpansion.resolveCommandTemplate(pendingManagerExpansion.command, { values });
+    if (resolved.errors.length) {
+      const error = resolved.errors[0];
+      elements.fillInMessage.textContent = error.message;
+      const fieldIndex = pendingManagerExpansion.fields.findIndex((field) => field.label === error.fieldLabel);
+      const control = elements.fillInFields.querySelector(`[data-field-index="${fieldIndex}"]`);
+      if (control) {
+        control.setAttribute("aria-invalid", "true");
+        control.focus();
+      }
+      return;
+    }
+    const request = pendingManagerExpansion;
+    pendingManagerExpansion = null;
+    elements.fillInDialog.close();
+    applyManagerExpansion(request, values);
+  });
   elements.managerTest.addEventListener("keydown", (event) => {
     if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
     if (!SlashExpansion.isSupportedKey(event.key) || !SlashExpansion.isKeyEnabled(event.key, state.settings)) return;
@@ -1072,6 +1829,7 @@
   elements.managerTest.addEventListener("input", (event) => {
     if (!event.isTrusted || event.isComposing || !SlashExpansion.isAutoEnabled(state.settings)) return;
     if (!SlashExpansion.isAutoExpansionInput(event.inputType)) return;
+    if (pendingManagerExpansion) return;
     expandManagerTest("Auto");
   });
 
@@ -1189,13 +1947,18 @@
   });
 
   function exportData() {
+    const exportedUsageStats = {};
+    state.commands.forEach((command) => {
+      exportedUsageStats[command.id] = cleanUsageEntry(usageStats[command.id]);
+    });
     return JSON.stringify({
       format: "expander-commands",
       version: SlashDefaults.STATE_VERSION,
       exportedAt: new Date().toISOString(),
       commands: state.commands,
       sections: state.sections,
-      settings: state.settings
+      settings: state.settings,
+      usageStats: exportedUsageStats
     }, null, 2);
   }
 
@@ -1226,6 +1989,11 @@
 
     const sectionNameBySourceId = new Map();
     const sectionsByName = new Map();
+    const importedUsageStats = imported.usageStats && typeof imported.usageStats === "object"
+      ? imported.usageStats
+      : {};
+    const exportedAt = Date.parse(imported.exportedAt);
+    const usageFallbackTime = Number.isFinite(exportedAt) ? exportedAt : Date.now();
     const rawSections = Array.isArray(imported.sections) ? imported.sections : [];
     rawSections.forEach((rawSection) => {
       const clean = SlashStore.sanitizeSection(rawSection);
@@ -1250,7 +2018,10 @@
       }
       commandsByShortcut.set(shortcutKey, {
         ...clean,
-        sourceSectionName: sectionNameBySourceId.get(clean.sectionId) || null
+        sourceSectionName: sectionNameBySourceId.get(clean.sectionId) || null,
+        sourceUsage: Object.prototype.hasOwnProperty.call(importedUsageStats, clean.id)
+          ? cleanImportedUsageEntry(importedUsageStats[clean.id], usageFallbackTime)
+          : null
       });
     });
 
@@ -1309,33 +2080,59 @@
       nextSections.push({ id, name: section.name });
     });
 
-    const importedCommands = plan.commands.map((command) => ({
-      ...command,
-      id: SlashStore.createId(),
-      sectionId: command.sourceSectionName
-        ? sectionIdByName.get(command.sourceSectionName.toLowerCase()) || null
-        : null
-    }));
-    const nextCommands = mode === "replace" ? importedCommands : [...state.commands];
+    const importedRecords = plan.commands.map((command) => {
+      const { sourceSectionName, sourceUsage, ...commandData } = command;
+      return {
+        command: {
+          ...commandData,
+          id: SlashStore.createId(),
+          sectionId: sourceSectionName
+            ? sectionIdByName.get(sourceSectionName.toLowerCase()) || null
+            : null
+        },
+        usage: sourceUsage
+      };
+    });
+    const acceptedRecords = mode === "replace" ? importedRecords : [];
+    const nextCommands = mode === "replace"
+      ? importedRecords.map((record) => record.command)
+      : [...state.commands];
     if (mode === "merge") {
       const existingShortcuts = new Set(nextCommands.map((command) => command.shortcut.toLowerCase()));
-      importedCommands.forEach((command) => {
-        const key = command.shortcut.toLowerCase();
+      importedRecords.forEach((record) => {
+        const key = record.command.shortcut.toLowerCase();
         if (existingShortcuts.has(key)) return;
         existingShortcuts.add(key);
-        nextCommands.push(command);
+        nextCommands.push(record.command);
+        acceptedRecords.push(record);
       });
     }
 
     const nextSettings = includeSettings && plan.settings
       ? { ...state.settings, ...plan.settings }
       : state.settings;
-    return SlashStore.saveState({
-      ...state,
-      sections: nextSections,
-      commands: nextCommands,
-      settings: nextSettings
+    const storedUsage = await chrome.storage.local.get(["usageStats"]);
+    const previousUsage = storedUsage.usageStats && typeof storedUsage.usageStats === "object"
+      ? storedUsage.usageStats
+      : {};
+    const nextUsage = mode === "replace" ? {} : { ...previousUsage };
+    acceptedRecords.forEach((record) => {
+      nextUsage[record.command.id] = record.usage || cleanUsageEntry(null);
     });
+    usageStats = nextUsage;
+    await chrome.storage.local.set({ usageStats: nextUsage });
+    try {
+      return await SlashStore.saveState({
+        ...state,
+        sections: nextSections,
+        commands: nextCommands,
+        settings: nextSettings
+      });
+    } catch (error) {
+      usageStats = previousUsage;
+      await chrome.storage.local.set({ usageStats: previousUsage });
+      throw error;
+    }
   }
 
   document.querySelector("#export-commands").addEventListener("click", () => {
@@ -1411,7 +2208,15 @@
       await loadUsageStats();
       const params = new URLSearchParams(location.search);
       if (params.get("new") === "1") {
-        createCommand(params.get("section"));
+        let draftExpansion = "";
+        const draftToken = params.get("draft");
+        if (draftToken && /^[a-f0-9-]{16,80}$/iu.test(draftToken)) {
+          const draftKey = `commandDraft:${draftToken}`;
+          const draft = await chrome.storage.session.get([draftKey]);
+          await chrome.storage.session.remove([draftKey]);
+          draftExpansion = typeof draft[draftKey]?.expansion === "string" ? draft[draftKey].expansion.slice(0, 8000) : "";
+        }
+        createCommand(params.get("section"), draftExpansion);
         return;
       }
       const requested = params.get("command");
