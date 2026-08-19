@@ -110,7 +110,7 @@ npm.cmd run e2e
 npm.cmd run verify
 ```
 
-`npm run check` runs the unit tests and validates the Manifest V3 files. `npm run e2e` loads the extension in a temporary Chromium profile and exercises the primary user flows. Set `EXPANDER_CHROMIUM_PATH` if Chromium is installed in a nonstandard location.
+`npm run check` runs the unit tests and validates the Manifest V3 files. `npm run e2e` loads the extension in a temporary Chromium profile and exercises the primary user flows. Set `EXPANDER_CHROMIUM_PATH` if Chromium is installed in a nonstandard location. Pull requests and `main` are verified on Windows, macOS, and Linux.
 
 Regenerate the PNG icons from the source SVG with:
 
