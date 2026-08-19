@@ -396,7 +396,10 @@ try {
     }))
   });
   assert.equal(await options.locator("#import-dialog").evaluate((dialog) => dialog.open), true);
-  assert.deepEqual(await options.locator("#import-summary strong").allTextContents(), ["1", "0", "0"]);
+  await waitForValue(
+    async () => JSON.stringify(await options.locator("#import-summary strong").allTextContents()),
+    JSON.stringify(["1", "0", "0"])
+  );
   const backupPromise = options.waitForEvent("download");
   await options.getByRole("button", { name: "Import commands" }).click();
   const backup = await backupPromise;
@@ -437,7 +440,10 @@ try {
       }
     }))
   });
-  assert.deepEqual(await options.locator("#import-summary strong").allTextContents(), ["0", "1", "0"]);
+  await waitForValue(
+    async () => JSON.stringify(await options.locator("#import-summary strong").allTextContents()),
+    JSON.stringify(["0", "1", "0"])
+  );
   const conflictBackupPromise = options.waitForEvent("download");
   await options.getByRole("button", { name: "Import commands" }).click();
   await conflictBackupPromise;
