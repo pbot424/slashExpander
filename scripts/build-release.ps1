@@ -11,6 +11,9 @@ if ([string]::IsNullOrWhiteSpace($manifest.version)) {
 $releaseItems = @(
   "manifest.json"
   "background.js"
+  "private-picker-background.js"
+  "picker.html"
+  "picker.js"
   "content"
   "shared"
   "assets"

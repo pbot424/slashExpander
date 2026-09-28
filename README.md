@@ -140,3 +140,15 @@ git push origin v0.4.6
 ```
 
 The GitHub Actions release workflow runs the project checks, builds the validated ZIP, generates release notes, and attaches the ZIP to a release named `/Expander v<version>`.
+
+### Website isolation (0.5.1)
+
+Shortcut expansion requires trusted browser input. The command picker and template
+fill-in forms open in an extension-owned window; no library previews or form
+contents are mounted into the website DOM. Ctrl+Shift+Space still opens the picker.
+Only the selected text is inserted into the original editor. The website can read
+text after insertion, just as it can read text you type.
+
+Insertion requests are short-lived and bound to the original tab, frame, document,
+and picker window. Closing the picker cancels the request; navigation or expiry
+prevents insertion. Synthetic website events cannot open or submit the picker.

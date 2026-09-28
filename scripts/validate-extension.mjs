@@ -10,6 +10,7 @@ const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"))
 if (manifest.manifest_version !== 3) throw new Error("Manifest must use version 3.");
 
 const referenced = [
+  "private-picker-background.js", "picker.html", "picker.js",
   manifest.background?.service_worker,
   manifest.action?.default_popup,
   manifest.options_ui?.page,
@@ -22,7 +23,7 @@ for (const relativePath of new Set(referenced)) {
   await access(join(root, relativePath), constants.R_OK);
 }
 
-const htmlEntries = [manifest.action?.default_popup, manifest.options_ui?.page].filter(Boolean);
+const htmlEntries = ["picker.html",manifest.action?.default_popup, manifest.options_ui?.page].filter(Boolean);
 const htmlSources = new Map();
 for (const htmlPath of htmlEntries) {
   const html = await readFile(join(root, htmlPath), "utf8");

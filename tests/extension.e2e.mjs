@@ -481,11 +481,11 @@ try {
   assert.equal(await options.evaluate((commandId) => chrome.storage.local.get(["usageStats"])
     .then((stored) => Object.prototype.hasOwnProperty.call(stored.usageStats || {}, commandId)), importedCommand.id), false);
   await options.getByRole("button", { name: "Close settings" }).click();
-  await options.getByRole("button", { name: /!imported/ }).click();
+  await options.getByRole("button", { name: "Edit !imported", exact: true }).click();
   assert.equal(await options.locator("#manager-dashboard").isHidden(), true);
   await options.locator("#expansion").fill("Unsaved edit");
   await options.getByRole("button", { name: "Close command editor" }).click();
-  await options.getByRole("button", { name: /!imported/ }).click();
+  await options.getByRole("button", { name: "Edit !imported", exact: true }).click();
   assert.equal(await options.locator("#expansion").inputValue(), "Replaced text");
   assert.equal((await options.getByRole("button", { name: "Delete command" }).textContent()).trim(), "");
   options.once("dialog", (dialog) => dialog.accept());
@@ -678,28 +678,55 @@ try {
   await popup.locator("#fill-in-form").getByRole("button", { name: "Insert command" }).click();
   assert.equal(await popup.locator("#quick-test").inputValue(), "Hello Popup, priority Normal.\nNotes: Popup notes\nDue: 08/21/2026\n Done. ");
 
+  await page.locator('#multiline').fill('/template');
+  for (const key of [' ', 'Tab', 'Enter']) {
+    await page.locator('#multiline').evaluate((target, key) => target.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles:true, composed:true})), key);
+    assert.equal(await page.locator('#multiline').inputValue(), '/template');
+  }
+  await page.locator('#multiline').evaluate(target => target.dispatchEvent(new KeyboardEvent('keydown', {key:' ', code:'Space',ctrlKey:true,shiftKey:true,bubbles:true,composed:true})));
+  assert.equal(await page.locator('[data-expander-ui]:not([hidden])').count(), 0);
   await page.locator("#multiline").fill("/template");
   await page.locator("#multiline").press("Space");
-  const contentUi = page.locator("[data-expander-ui]");
+  async function insertionWindow() {
+    const find = () => context.pages().find(candidate => candidate.url().includes('/picker.html#') && !candidate.isClosed());
+    await waitForValue(() => Boolean(find()), true);
+    const candidate = find();
+    await candidate.locator('[data-expander-ui] .panel').waitFor({state:'visible'});
+    return candidate;
+  }
+  let pickerPage = await insertionWindow();
+  let contentUi = pickerPage.locator('[data-expander-ui]');
+  assert.equal(await page.locator('[data-expander-ui]').count(), 0);
   assert.equal(await contentUi.locator(".panel").isVisible(), true);
   await contentUi.locator('.fields input[type="text"]').fill("Website");
   await contentUi.locator(".fields select").selectOption("High");
   await contentUi.locator(".fields textarea").fill("Website notes");
   await contentUi.locator('.fields input[type="date"]').fill("2026-08-22");
-  await page.screenshot({ path: screenshots.fillInCompletion });
+  await pickerPage.screenshot({ path: screenshots.fillInCompletion });
   await contentUi.getByRole("button", { name: "Insert command" }).click();
   const websiteTemplateValue = "Hello Website, priority High.\nNotes: Website notes\nDue: 08/22/2026\nRegards,\nPresbot Done. ";
-  assert.equal(await page.locator("#multiline").inputValue(), websiteTemplateValue);
+  await waitForValue(() => page.locator("#multiline").inputValue(), websiteTemplateValue);
+  if (!pickerPage.isClosed()) await pickerPage.waitForEvent('close');
   assert.equal(await page.locator("#multiline").evaluate((element) => element.selectionStart), websiteTemplateValue.indexOf(" Done."));
 
   await page.locator("#multiline").fill("");
   await page.locator("#multiline").focus();
   await page.locator("#multiline").press("Control+Shift+Space");
+  pickerPage = await insertionWindow();
+  contentUi = pickerPage.locator('[data-expander-ui]');
   assert.equal(await contentUi.locator(".panel").isVisible(), true);
   assert.equal(await contentUi.locator(".subtitle").isVisible(), false);
   await contentUi.locator(".search").fill("template");
   assert.equal(await contentUi.locator(".result").count(), 1);
-  await page.screenshot({ path: screenshots.inlinePicker });
+  await pickerPage.screenshot({ path: screenshots.inlinePicker });
+  // A hostile page cannot search text in the extension-owned window.
+  const selectedPickerText = await page.evaluate(() => {
+    window.find('Hello');
+    const text = window.getSelection()?.toString() || '';
+    window.getSelection()?.removeAllRanges();
+    return text;
+  });
+  assert.equal(selectedPickerText, '');
   await contentUi.locator(".search").press("Enter");
   await contentUi.locator('.fields input[type="text"]').fill("Picker");
   await contentUi.locator(".fields select").selectOption("Normal");
@@ -707,7 +734,7 @@ try {
   await contentUi.locator('.fields input[type="date"]').fill("2026-08-23");
   await contentUi.locator('.fields input[type="checkbox"]').uncheck();
   await contentUi.getByRole("button", { name: "Insert command" }).click();
-  assert.equal(await page.locator("#multiline").inputValue(), "Hello Picker, priority Normal.\nNotes: Picker notes\nDue: 08/23/2026\n Done.");
+  await waitForValue(() => page.locator("#multiline").inputValue(), "Hello Picker, priority Normal.\nNotes: Picker notes\nDue: 08/23/2026\n Done.");
   await waitForValue(
     () => options.evaluate((commandId) => chrome.storage.local.get(["usageStats"]).then((stored) => stored.usageStats?.[commandId]?.count), templateCommand.id),
     2
