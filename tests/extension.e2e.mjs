@@ -380,7 +380,7 @@ try {
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify({ format: "expander-commands", version: 999, commands: [{ shortcut: "/future", expansion: "Future" }] }))
   });
-  assert.equal(await options.locator("#settings-message").textContent(), "This backup was created by a newer version of /Expander.");
+  await waitForValue(() => options.locator("#settings-message").textContent(), "This backup was created by a newer version of /Expander.");
   assert.equal(await options.locator("#import-dialog").evaluate((dialog) => dialog.open), false);
 
   await options.locator("#import-file").setInputFiles({
