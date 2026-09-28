@@ -1,3 +1,4 @@
+importScripts("private-picker-background.js");
 importScripts("shared/defaults.js", "shared/storage.js");
 
 const CONTENT_SCRIPT_FILES = ["shared/defaults.js", "shared/template-engine.js", "shared/expansion-core.js", "shared/storage.js", "content/content.js"];
